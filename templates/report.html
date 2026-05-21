@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MLB Model Report — {{ date }}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0f1117;
+    color: #e2e8f0;
+    padding: 24px;
+  }
+  h1 { font-size: 1.6rem; font-weight: 700; color: #f7fafc; }
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #2d3748;
+  }
+  .meta { font-size: 0.85rem; color: #718096; }
+  .summary-bar {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 28px;
+  }
+  .summary-chip {
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 0.82rem;
+    font-weight: 600;
+  }
+  .chip-total { background: #2d3748; color: #cbd5e0; }
+  .chip-bet { background: #22543d; color: #68d391; }
+  .chip-lean { background: #2a4365; color: #90cdf4; }
+
+  .games-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(520px, 1fr));
+    gap: 20px;
+  }
+  .game-card {
+    background: #1a202c;
+    border: 1px solid #2d3748;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .game-card.has-bet { border-color: #276749; }
+  .game-card.has-lean { border-color: #2a4365; }
+
+  .card-header {
+    padding: 16px 20px 12px;
+    background: #171923;
+    border-bottom: 1px solid #2d3748;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .matchup { font-size: 1.05rem; font-weight: 700; }
+  .matchup .away { color: #e2e8f0; }
+  .matchup .at { color: #4a5568; margin: 0 6px; }
+  .matchup .home { color: #e2e8f0; }
+  .pitchers { font-size: 0.78rem; color: #718096; margin-top: 4px; }
+  .badge {
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 6px;
+    letter-spacing: 0.05em;
+  }
+  .badge-BET { background: #22543d; color: #68d391; }
+  .badge-LEAN { background: #2a4365; color: #90cdf4; }
+  .badge-PASS { background: #2d3748; color: #718096; }
+
+  .card-body { padding: 16px 20px; }
+
+  .win-prob-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+  .prob-bar-wrap {
+    flex: 1;
+    height: 8px;
+    background: #2d3748;
+    border-radius: 4px;
+    overflow: hidden;
+    display: flex;
+  }
+  .prob-bar-away {
+    background: #4299e1;
+    height: 100%;
+    transition: width 0.3s;
+  }
+  .prob-bar-home {
+    background: #48bb78;
+    height: 100%;
+    transition: width 0.3s;
+  }
+  .prob-label { font-size: 0.78rem; color: #a0aec0; min-width: 36px; }
+  .prob-val { font-size: 0.78rem; font-weight: 600; min-width: 40px; text-align: right; }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .stat-block {
+    background: #171923;
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .stat-label { font-size: 0.7rem; color: #718096; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 2px; }
+  .stat-value { font-size: 1.0rem; font-weight: 700; color: #f7fafc; }
+  .stat-sub { font-size: 0.72rem; color: #a0aec0; margin-top: 1px; }
+
+  .edges-section { margin-top: 4px; }
+  .edge-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 10px;
+    border-radius: 6px;
+    margin-bottom: 4px;
+    font-size: 0.82rem;
+    background: #171923;
+  }
+  .edge-label { color: #a0aec0; }
+  .edge-value { font-weight: 700; }
+  .strong-edge .edge-value { color: #68d391; }
+  .lean-edge .edge-value { color: #90cdf4; }
+  .negative-edge .edge-value { color: #fc8181; }
+  .neutral .edge-value { color: #a0aec0; }
+
+  .no-odds { font-size: 0.82rem; color: #718096; font-style: italic; padding: 8px 0; }
+
+  .scores-preview {
+    margin-top: 10px;
+    font-size: 0.75rem;
+    color: #718096;
+  }
+  .scores-preview span { margin-right: 8px; }
+
+  footer {
+    margin-top: 32px;
+    text-align: center;
+    font-size: 0.75rem;
+    color: #4a5568;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>MLB Model Report</h1>
+    <div class="meta">{{ date }} &nbsp;·&nbsp; Generated {{ generated_at }}</div>
+  </div>
+  <div class="summary-bar">
+    <span class="summary-chip chip-total">{{ total_games }} Games</span>
+    {% if bet_count > 0 %}<span class="summary-chip chip-bet">{{ bet_count }} BET</span>{% endif %}
+    {% if lean_count > 0 %}<span class="summary-chip chip-lean">{{ lean_count }} LEAN</span>{% endif %}
+  </div>
+</div>
+
+<div class="games-grid">
+{% for g in games %}
+{% set sim = g.simulation %}
+{% set edge = g.edge %}
+{% set game = g.game %}
+{% set rec = edge.recommendation %}
+<div class="game-card {% if rec == 'BET' %}has-bet{% elif rec == 'LEAN' %}has-lean{% endif %}">
+
+  <div class="card-header">
+    <div>
+      <div class="matchup">
+        <span class="away">{{ game.away_team }}</span>
+        <span class="at">@</span>
+        <span class="home">{{ game.home_team }}</span>
+      </div>
+      <div class="pitchers">
+        {{ game.away_pitcher.name if game.away_pitcher else 'TBD' }} ({{ game.away_pitcher_profile.hand if game.away_pitcher_profile else '?' }})
+        &nbsp;vs&nbsp;
+        {{ game.home_pitcher.name if game.home_pitcher else 'TBD' }} ({{ game.home_pitcher_profile.hand if game.home_pitcher_profile else '?' }})
+      </div>
+    </div>
+    <span class="badge badge-{{ rec }}">{{ rec }}</span>
+  </div>
+
+  <div class="card-body">
+
+    <!-- Win Probability Bar -->
+    <div class="win-prob-row">
+      <span class="prob-label">{{ game.away_team.split()[-1] }}</span>
+      <div class="prob-bar-wrap">
+        <div class="prob-bar-away" style="width: {{ (sim.away_win_pct * 100) | round(1) }}%"></div>
+        <div class="prob-bar-home" style="width: {{ (sim.home_win_pct * 100) | round(1) }}%"></div>
+      </div>
+      <span class="prob-label">{{ game.home_team.split()[-1] }}</span>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-block">
+        <div class="stat-label">{{ game.away_team.split()[-1] }} Win %</div>
+        <div class="stat-value">{{ sim.away_win_pct | pct }}</div>
+        <div class="stat-sub">Fair ML: {{ edge.model_fair_away_ml | american }}</div>
+      </div>
+      <div class="stat-block">
+        <div class="stat-label">{{ game.home_team.split()[-1] }} Win %</div>
+        <div class="stat-value">{{ sim.home_win_pct | pct }}</div>
+        <div class="stat-sub">Fair ML: {{ edge.model_fair_home_ml | american }}</div>
+      </div>
+      <div class="stat-block">
+        <div class="stat-label">Projected Runs</div>
+        <div class="stat-value">{{ sim.avg_total_runs }}</div>
+        <div class="stat-sub">{{ sim.avg_away_runs }} – {{ sim.avg_home_runs }}</div>
+      </div>
+      <div class="stat-block">
+        <div class="stat-label">Book Total</div>
+        <div class="stat-value">{% if edge.book_total %}{{ edge.book_total }}{% else %}N/A{% endif %}</div>
+        <div class="stat-sub">
+          {% if edge.book_total %}
+            Model diff: {% if sim.avg_total_runs > edge.book_total %}+{% endif %}{{ "%.1f" | format(sim.avg_total_runs - edge.book_total) }}
+          {% else %}No odds{% endif %}
+        </div>
+      </div>
+    </div>
+
+    {% if edge.has_odds %}
+    <div class="edges-section">
+      {% if edge.home_edge is not none %}
+      <div class="edge-row {{ edge.home_edge | edge_class }}">
+        <span class="edge-label">{{ game.home_team }} ML ({{ edge.book_home_ml | american }})</span>
+        <span class="edge-value">
+          Edge: {% if edge.home_edge > 0 %}+{% endif %}{{ "%.1f" | format(edge.home_edge * 100) }}%
+        </span>
+      </div>
+      {% endif %}
+      {% if edge.away_edge is not none %}
+      <div class="edge-row {{ edge.away_edge | edge_class }}">
+        <span class="edge-label">{{ game.away_team }} ML ({{ edge.book_away_ml | american }})</span>
+        <span class="edge-value">
+          Edge: {% if edge.away_edge > 0 %}+{% endif %}{{ "%.1f" | format(edge.away_edge * 100) }}%
+        </span>
+      </div>
+      {% endif %}
+      {% if edge.total_edge_over is not none %}
+      <div class="edge-row {{ edge.total_edge_over | edge_class }}">
+        <span class="edge-label">Over {{ edge.book_total }} ({{ edge.book_over_ml | american }})</span>
+        <span class="edge-value">
+          Edge: {% if edge.total_edge_over > 0 %}+{% endif %}{{ "%.1f" | format(edge.total_edge_over * 100) }}%
+        </span>
+      </div>
+      <div class="edge-row {{ edge.total_edge_under | edge_class }}">
+        <span class="edge-label">Under {{ edge.book_total }} ({{ edge.book_under_ml | american }})</span>
+        <span class="edge-value">
+          Edge: {% if edge.total_edge_under > 0 %}+{% endif %}{{ "%.1f" | format(edge.total_edge_under * 100) }}%
+        </span>
+      </div>
+      {% endif %}
+    </div>
+    {% else %}
+    <div class="no-odds">No sportsbook odds available for this game.</div>
+    {% endif %}
+
+    {% if sim.most_common_scores %}
+    <div class="scores-preview">
+      Most common:
+      {% for (h, a), cnt in sim.most_common_scores %}
+        <span>{{ a }}-{{ h }} ({{ "%.1f" | format(cnt / 10) }}%)</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endfor %}
+</div>
+
+<footer>MLB Predictive Model · For informational purposes only · Not financial advice</footer>
+</body>
+</html>
