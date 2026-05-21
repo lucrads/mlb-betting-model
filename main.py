@@ -30,6 +30,7 @@ from data.odds import fetch_odds, resolve_game_odds
 from model.simulator import build_bullpen_profile
 from model.monte_carlo import run_simulations
 from output.edge_calc import compute_edge
+from output.matchup_details import compute_matchup_details
 from output.report import generate_report
 import config
 
@@ -164,10 +165,14 @@ def main():
         # Compute edge
         edge = compute_edge(simulation, game_odds)
 
+        # Compute per-batter matchup details for the detail view
+        details = compute_matchup_details(game)
+
         game_results.append({
             "game": game,
             "simulation": simulation,
             "edge": edge,
+            "details": details,
         })
 
         _print_game_summary(game, simulation, edge)

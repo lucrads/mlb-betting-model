@@ -49,11 +49,12 @@ def simulate_game(game: dict, batter_profiles: dict, pitcher_profiles: dict) -> 
         away_runs += runs
 
         # Bottom of inning: home team bats vs away pitcher
-        # Walk-off: home wins in bottom of 9th+
+        # Walk-off: end the half-inning the moment home team takes the lead (9th+)
         home_pitcher = _get_active_pitcher(home_starter, home_bullpen, inning)
         runs, home_batter_idx = _simulate_half_inning(
             home_lineup, home_batter_idx, home_pitcher,
-            walkoff=(inning >= 9 and home_runs + 1 > away_runs or inning >= 9)
+            walkoff=(inning >= 9),
+            runs_needed=(away_runs - home_runs) if inning >= 9 else 999,
         )
         home_runs += runs
 
@@ -77,13 +78,13 @@ def _simulate_half_inning(
     batter_idx: int,
     pitcher: dict,
     walkoff: bool = False,
+    runs_needed: int = 999,
 ) -> tuple[int, int]:
     """
     Simulate one half-inning. Returns (runs_scored, next_batter_idx).
 
-    lineup: list of batter profile dicts
-    batter_idx: index of the leadoff batter for this half-inning
-    walkoff: if True, end immediately when home team takes the lead
+    runs_needed: in walkoff situations, stop once cumulative runs exceed this
+                 (i.e. home team takes the lead).
     """
     outs = 0
     runs = 0
@@ -100,13 +101,12 @@ def _simulate_half_inning(
         probs = compute_at_bat_probs(batter, pitcher)
         outcome = sample_outcome(probs)
 
-        runs_scored, bases, new_outs = _apply_outcome(outcome, bases, outs)
+        runs_scored, bases, outs = _apply_outcome(outcome, bases, outs)
         runs += runs_scored
-        outs = new_outs
 
         current_idx += 1
 
-        if walkoff and runs > 0:
+        if walkoff and runs > runs_needed:
             break
 
     return runs, current_idx % lineup_size
@@ -137,20 +137,16 @@ def _apply_outcome(
         return runs, [False, False, True], new_outs
 
     elif outcome == "2B":
-        # All runners on 2nd and 3rd score; runner on 1st reaches 3rd (~70%) or scores (~30%)
+        # Runners on 2nd/3rd score; runner on 1st scores ~30% or stops at 3rd
         runs += int(b2) + int(b3)
+        runner_1b_scored = False
         if b1:
             if np.random.random() < rng["double_runner_1b_scores_prob"]:
                 runs += 1
-                new_b1 = False
-            else:
-                new_b1 = False  # runner goes to 3rd
-                return runs, [False, False, True], new_outs
-        new_bases = [False, False, False]
-        new_bases[1] = True  # batter on 2nd
-        if b1 and runs == int(b2) + int(b3):  # runner on 1st didn't score
-            new_bases[2] = True
-        return runs, new_bases, new_outs
+                runner_1b_scored = True
+        # Batter on 2nd; runner from 1st on 3rd if didn't score
+        new_b3 = b1 and not runner_1b_scored
+        return runs, [False, True, new_b3], new_outs
 
     elif outcome == "1B":
         # Runner on 3rd scores

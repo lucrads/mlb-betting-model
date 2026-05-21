@@ -211,17 +211,24 @@ def get_batter_profile(player_name: str, player_id: int | None = None) -> dict:
     start, end = _season_dates(CURRENT_SEASON)
     sc = _statcast_batter_cached(mlbam_id, start, end)
     if not sc.empty:
-        # wOBA by pitch type
-        woba_by_pitch = _woba_by_pitch_type(sc)
-        if woba_by_pitch:
-            profile["woba_vs_pitch"].update(woba_by_pitch)
+        # Use woba_value (actual outcome wOBA) so it's on the same scale as
+        # LEAGUE_AVG_WOBA_BY_PITCH constants. estimated_woba_using_speedangle is
+        # a contact-quality metric that runs ~0.35-0.38 and inflates matchup factors.
+        terminal = sc[sc["woba_value"].notna()] if "woba_value" in sc.columns else pd.DataFrame()
+        if not terminal.empty:
+            woba_by_pitch = _woba_by_pitch_type(terminal, "woba_value")
+            if woba_by_pitch:
+                profile["woba_vs_pitch"].update(woba_by_pitch)
 
-        # L/R splits from p_throws
-        if "p_throws" in sc.columns:
+        # L/R splits: use actual woba_value on terminal pitches, fall back to
+        # estimated_woba_using_speedangle if woba_value isn't populated
+        woba_split_col = "woba_value" if not terminal.empty else "estimated_woba_using_speedangle"
+        split_src = terminal if not terminal.empty else sc
+        if "p_throws" in split_src.columns and woba_split_col in split_src.columns:
             for hand in ("L", "R"):
-                subset = sc[sc["p_throws"] == hand]
-                if len(subset) >= 20:
-                    val = subset["estimated_woba_using_speedangle"].mean()
+                subset = split_src[split_src["p_throws"] == hand]
+                if len(subset) >= 15:
+                    val = subset[woba_split_col].mean()
                     if not pd.isna(val):
                         profile["woba_vs_hand"][hand] = round(float(val), 3)
 
