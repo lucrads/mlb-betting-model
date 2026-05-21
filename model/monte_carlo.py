@@ -4,7 +4,7 @@ import logging
 import numpy as np
 from collections import Counter
 from model.simulator import simulate_game
-from config import NUM_SIMULATIONS
+import config
 
 logger = logging.getLogger(__name__)
 
@@ -19,9 +19,10 @@ def run_simulations(game: dict) -> dict:
       run_distribution (Counter of total run outcomes),
       score_distribution (Counter of (home_runs, away_runs) pairs)
     """
+    n_sims = config.NUM_SIMULATIONS
     logger.info(
         "Simulating %s @ %s (%d simulations)...",
-        game["away_team"], game["home_team"], NUM_SIMULATIONS
+        game["away_team"], game["home_team"], n_sims
     )
 
     home_wins = 0
@@ -31,7 +32,7 @@ def run_simulations(game: dict) -> dict:
     away_run_totals = []
     score_dist: Counter = Counter()
 
-    for _ in range(NUM_SIMULATIONS):
+    for _ in range(n_sims):
         h, a = simulate_game(game, {}, {})
         home_run_totals.append(h)
         away_run_totals.append(a)
@@ -43,7 +44,7 @@ def run_simulations(game: dict) -> dict:
         else:
             ties += 1
 
-    n = NUM_SIMULATIONS
+    n = n_sims
     avg_home = float(np.mean(home_run_totals))
     avg_away = float(np.mean(away_run_totals))
     avg_total = avg_home + avg_away

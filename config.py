@@ -21,24 +21,17 @@ BASE_RUNNING = {
     "groundout_runner_3b_scores_prob": 0.85, # prob runner on 3B scores on groundout (<2 outs)
 }
 
-# League average wOBA by pitch type (baseline estimates)
-LEAGUE_AVG_WOBA_BY_PITCH = {
-    "FF": 0.330,  # 4-seam fastball
-    "SI": 0.320,  # sinker
-    "FC": 0.315,  # cutter
-    "SL": 0.295,  # slider
-    "ST": 0.290,  # sweeper
-    "CU": 0.285,  # curveball
-    "KC": 0.280,  # knuckle-curve
-    "CH": 0.300,  # changeup
-    "FS": 0.295,  # splitter
-    "OTHER": 0.310,
-}
-
-# Pitch type groupings for normalization
+# Pitch type groupings
 FASTBALL_TYPES = {"FF", "SI", "FC"}
 BREAKING_TYPES = {"SL", "ST", "CU", "KC"}
 OFFSPEED_TYPES = {"CH", "FS"}
 
 # Season for stats
 CURRENT_SEASON = 2026
+
+# FIP constant for the pitcher's own FIP-to-wOBA conversion
+# Maps a pitcher's own computed FIP to an estimated wOBA allowed:
+#   woba_allowed = FIP_WOBA_INTERCEPT + fip * FIP_WOBA_SLOPE
+# At FIP 3.00 → ~0.296, FIP 4.10 → ~0.320, FIP 5.00 → ~0.340
+FIP_WOBA_INTERCEPT = 0.230
+FIP_WOBA_SLOPE = 0.022

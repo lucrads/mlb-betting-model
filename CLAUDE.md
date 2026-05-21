@@ -47,9 +47,9 @@ output/matchup_details.py + output/edge_calc.py → output/report.py → report_
 - `odds.py` — The Odds API. Prefers DraftKings > FanDuel > BetMGM > Caesars. Team name fuzzy matching via `_TEAM_ALIASES`.
 
 **Model layer** (`model/`)
-- `matchup.py` — Per-at-bat probability engine. Three-step pipeline: (1) base outcome rates from season stats, (2) L/R split multiplier (`woba_vs_hand / overall_woba`), (3) pitch-mix matchup factor (weighted ratio of batter `woba_value` vs league avg per pitch type). Both multipliers clamped to avoid extreme adjustments.
+- `matchup.py` — Per-at-bat probability engine. Three-step pipeline: (1) base outcome rates from player's own season/career stats, (2) L/R split multiplier (`batter_woba_vs_hand / batter_overall_woba`), (3) pitch-mix matchup factor using **geometric mean** of batter and pitcher Statcast values per pitch type, normalized by batter's overall wOBA. Zero league-average constants used anywhere. Both multipliers clamped [0.60, 1.60].
 - `simulator.py` — Full 9-inning game simulation with base-state machine `[1B, 2B, 3B]`. Switches from starter profile to bullpen profile after `STARTER_INNINGS_LIMIT` (6) innings. Walkoff logic ends the bottom half-inning only when the home team takes the lead.
-- `monte_carlo.py` — Runs `NUM_SIMULATIONS` (1000) calls to `simulate_game`, aggregates win%, avg runs, score distribution.
+- `monte_carlo.py` — Runs `config.NUM_SIMULATIONS` (1000) calls to `simulate_game`, aggregates win%, avg runs, score distribution. Reads `config.NUM_SIMULATIONS` at call time (not import time) so `--sims` CLI override works correctly.
 
 **Output layer** (`output/`)
 - `matchup_details.py` — Computes per-batter matchup scores (split factor × pitch-mix factor) for the HTML detail view. Does not affect simulation results.
@@ -65,13 +65,16 @@ output/matchup_details.py + output/edge_calc.py → output/report.py → report_
 | `STARTER_INNINGS_LIMIT` | Inning at which bullpen profile takes over (6) |
 | `BET_EDGE_THRESHOLD` | Edge % to flag as BET (0.05) |
 | `LEAN_EDGE_THRESHOLD` | Edge % to flag as LEAN (0.02) |
-| `LEAGUE_AVG_WOBA_BY_PITCH` | Baseline wOBA by pitch type — calibrated to `woba_value` scale from Statcast, not `estimated_woba_using_speedangle` |
+| `FIP_WOBA_INTERCEPT` / `FIP_WOBA_SLOPE` | Convert a pitcher's own FIP to estimated wOBA allowed: `woba = 0.230 + fip × 0.022` |
 
 ## Important calibration notes
 
-- **wOBA scale**: `player_stats.py` uses `woba_value` (actual outcome wOBA) for batter pitch-type comparison, NOT `estimated_woba_using_speedangle`. The estimated column averages ~0.35–0.38 while `LEAGUE_AVG_WOBA_BY_PITCH` constants are ~0.29–0.33 — mixing them inflates the matchup factor and over-predicts run totals by ~15%.
-- **Default lineups**: When a lineup isn't posted (Pre-Game/Scheduled), `main.py` substitutes league-average batter profiles via `build_default_lineup()`. These games will show ~50/50 win probability and ~8.5 projected runs.
-- **Bullpen profile**: Derived from team aggregate pitching stats via MLB Stats API, inflated by 5% (starters included in team totals). Controlled by `build_bullpen_profile()` in `simulator.py`.
+- **No league averages in matchup math**: Every ratio in the pitch-mix factor uses player Statcast data only. Batter pitch-type wOBA (from `woba_value` on terminal events) is compared against what *this pitcher specifically* allows (geometric mean formula). No `LEAGUE_AVG_WOBA_BY_PITCH` constants exist.
+- **Geometric mean formula**: `matchup_factor = Σ(pct × sqrt(batter_vs_PT × pitcher_allows_PT)) / batter_overall_woba`. Factor = 1.0 when matchup is neutral; < 1.0 when pitcher dominates; > 1.0 when batter has an edge.
+- **Career stat fallback**: If a batter has < 20 PA in the current season, `player_stats.py` tries career stats (≥ 50 PA) before giving up. This replaces the old league-average substitution.
+- **Default lineups**: When a lineup isn't posted (Pre-Game/Scheduled), `main.py` substitutes placeholder batter profiles via `build_default_lineup()`.
+- **Bullpen profile**: Derived from team aggregate pitching FIP via MLB Stats API (inflated 5% over team total). wOBA allowed is computed from the team's own FIP via `FIP_WOBA_INTERCEPT + fip × FIP_WOBA_SLOPE` — no league-avg substitution. Pitch mix is a generic bullpen distribution (FF-heavy); since wOBA is uniform across types, the mix only weights the batter's pitch-type splits.
+- **wOBA scale**: Uses `woba_value` (actual outcome wOBA on terminal events) throughout — NOT `estimated_woba_using_speedangle`.
 
 ## GitHub
 

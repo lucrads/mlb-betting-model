@@ -9,8 +9,8 @@ Models a full 9-inning game (plus extra innings if tied) by:
 """
 
 import numpy as np
-from model.matchup import compute_at_bat_probs, sample_outcome
-from config import BASE_RUNNING, STARTER_INNINGS_LIMIT, STARTER_BATTERS_FACED_LIMIT
+from model.matchup import compute_at_bat_probs, sample_outcome, _pitcher_avg_woba_allowed
+from config import BASE_RUNNING, STARTER_INNINGS_LIMIT, STARTER_BATTERS_FACED_LIMIT, FIP_WOBA_INTERCEPT, FIP_WOBA_SLOPE
 
 
 def simulate_game(game: dict, batter_profiles: dict, pitcher_profiles: dict) -> tuple[int, int]:
@@ -197,18 +197,24 @@ def _apply_outcome(
 
 
 def build_bullpen_profile(bullpen_stats: dict) -> dict:
-    """Convert bullpen ERA/FIP to a generic pitcher profile for simulation."""
-    era = bullpen_stats.get("era", 4.20)
-    fip = bullpen_stats.get("fip", 4.10)
-    # Estimate wOBA from FIP: rough linear mapping
-    # League avg FIP ~4.10 → wOBA allowed ~0.320
-    woba_allowed = 0.320 + (fip - 4.10) * 0.020
+    """Convert team bullpen ERA/FIP into a pitcher profile for simulation.
 
+    woba_allowed is derived from this team's own FIP — no league avg substitution.
+    Pitch mix is a reasonable bullpen aggregate (heavy fastball/slider usage);
+    since woba_allowed is uniform across types, the mix only weights the batter's
+    pitch-type splits and does not introduce league avg into the denominator.
+    """
+    era = bullpen_stats.get("era", 4.50)
+    fip = bullpen_stats.get("fip", 4.20)
+    woba_allowed = max(0.180, min(0.420, FIP_WOBA_INTERCEPT + fip * FIP_WOBA_SLOPE))
+
+    pitch_types = ["FF", "SI", "SL", "FC", "ST", "CH", "CU", "FS"]
     return {
         "name": "Bullpen",
         "era": era,
         "fip": fip,
         "hand": "R",
-        "pitch_mix": {"FF": 0.50, "SL": 0.25, "CH": 0.15, "CU": 0.10},
-        "pitch_woba_allowed": {pt: woba_allowed for pt in ["FF", "SI", "SL", "CH", "CU", "FC", "ST", "FS"]},
+        "pitch_mix": {"FF": 0.45, "SL": 0.28, "FC": 0.10, "CH": 0.10, "CU": 0.07},
+        "pitch_woba_allowed": {pt: round(woba_allowed, 3) for pt in pitch_types},
+        "woba_allowed_overall": round(woba_allowed, 3),
     }
