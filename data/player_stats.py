@@ -5,6 +5,8 @@ Baseball Savant for pitch-level data.
 """
 
 import logging
+import os
+import sys
 import statsapi
 import pandas as pd
 import pybaseball
@@ -15,6 +17,17 @@ from config import CURRENT_SEASON, LEAGUE_AVG_WOBA_BY_PITCH
 logger = logging.getLogger(__name__)
 
 pybaseball.cache.enable()
+
+
+def _quiet(func, *args, **kwargs):
+    """Call func suppressing any stdout (e.g. pybaseball progress prints)."""
+    with open(os.devnull, "w") as devnull:
+        old_stdout = sys.stdout
+        sys.stdout = devnull
+        try:
+            return func(*args, **kwargs)
+        finally:
+            sys.stdout = old_stdout
 
 
 def _season_dates(year: int) -> tuple[str, str]:
@@ -95,7 +108,7 @@ def _get_pitcher_season_stats(mlbam_id: int, season: int) -> dict:
 def _statcast_batter_cached(mlbam_id: int, start: str, end: str) -> pd.DataFrame:
     try:
         logger.debug("Fetching Statcast batter data id=%s", mlbam_id)
-        df = pybaseball.statcast_batter(start, end, player_id=mlbam_id)
+        df = _quiet(pybaseball.statcast_batter, start, end, player_id=mlbam_id)
         return df if not df.empty else pd.DataFrame()
     except Exception as exc:
         logger.debug("Statcast batter failed id=%s: %s", mlbam_id, exc)
@@ -106,7 +119,7 @@ def _statcast_batter_cached(mlbam_id: int, start: str, end: str) -> pd.DataFrame
 def _statcast_pitcher_cached(mlbam_id: int, start: str, end: str) -> pd.DataFrame:
     try:
         logger.debug("Fetching Statcast pitcher data id=%s", mlbam_id)
-        df = pybaseball.statcast_pitcher(start, end, player_id=mlbam_id)
+        df = _quiet(pybaseball.statcast_pitcher, start, end, player_id=mlbam_id)
         return df if not df.empty else pd.DataFrame()
     except Exception as exc:
         logger.debug("Statcast pitcher failed id=%s: %s", mlbam_id, exc)
@@ -183,12 +196,16 @@ def get_batter_profile(player_name: str, player_id: int | None = None) -> dict:
                 "HR": hr_r, "BB": bb_r, "K": k_r,
                 "1B": singles_r, "2B": doubles_r, "3B": triples_r, "OUT": out_r,
             }
-            # Estimate wOBA from OBP + slugging components
-            obp = float(stats.get("obp", "0.320").lstrip(".") or "0.320")
-            slg = float(stats.get("slg", "0.400").lstrip(".") or "0.400")
-            # wOBA ~ 0.47*OBP + 0.53*SLG (rough linear approx)
-            woba_est = round(0.47 * obp + 0.53 * slg, 3)
-            profile["woba"] = woba_est
+            # Compute wOBA from components using standard linear weights
+            hbp = int(stats.get("hitByPitch", 0))
+            ibb = int(stats.get("intentionalWalks", 0))
+            sf  = int(stats.get("sacFlies", 0))
+            sh  = int(stats.get("sacBunts", 0))
+            ubb = max(bb - ibb, 0)
+            woba_num = (0.69 * ubb + 0.72 * hbp + 0.89 * singles
+                        + 1.27 * doubles + 1.62 * triples + 2.10 * hr)
+            woba_den = max(pa - ibb - sh, 1)
+            profile["woba"] = round(woba_num / woba_den, 3)
 
     # --- Statcast enrichment (Baseball Savant) ---
     start, end = _season_dates(CURRENT_SEASON)
@@ -249,8 +266,14 @@ def get_pitcher_profile(player_name: str, player_id: int | None = None) -> dict:
     if stats:
         era_str = stats.get("era", "4.20")
         whip_str = stats.get("whip", "1.30")
-        profile["era"] = float(era_str) if era_str and era_str != "-.--" else 4.20
-        profile["whip"] = float(whip_str) if whip_str and whip_str != "-.--" else 1.30
+        try:
+            profile["era"] = float(era_str) if era_str and era_str not in ("-.--", "--") else 4.20
+        except (ValueError, TypeError):
+            profile["era"] = 4.20
+        try:
+            profile["whip"] = float(whip_str) if whip_str and whip_str not in ("-.--", "--") else 1.30
+        except (ValueError, TypeError):
+            profile["whip"] = 1.30
 
         # Compute FIP from components
         ip_str = stats.get("inningsPitched", "0")
