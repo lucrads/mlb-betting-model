@@ -1,17 +1,12 @@
 """
-pybaseball-based stats loader.
-
-Fetches and caches:
-  - Season batting/pitching leaderboards (FanGraphs)
-  - Statcast pitch mix and pitch-type wOBA per pitcher
-  - Statcast pitch-type wOBA per batter
-  - L/R splits via FanGraphs splits API
+Stats loader using MLB Stats API + Baseball Savant (pybaseball Statcast).
+No FanGraphs dependency — uses official MLB API for season totals and
+Baseball Savant for pitch-level data.
 """
 
 import logging
-import requests
+import statsapi
 import pandas as pd
-import numpy as np
 import pybaseball
 from datetime import date
 from functools import lru_cache
@@ -21,9 +16,6 @@ logger = logging.getLogger(__name__)
 
 pybaseball.cache.enable()
 
-_batting_df: pd.DataFrame | None = None
-_pitching_df: pd.DataFrame | None = None
-
 
 def _season_dates(year: int) -> tuple[str, str]:
     start = f"{year}-03-20"
@@ -32,64 +24,123 @@ def _season_dates(year: int) -> tuple[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# Season leaderboards
-# ---------------------------------------------------------------------------
-
-def get_batting_stats() -> pd.DataFrame:
-    global _batting_df
-    if _batting_df is None:
-        logger.info("Loading FanGraphs batting stats for %d...", CURRENT_SEASON)
-        _batting_df = pybaseball.batting_stats(CURRENT_SEASON, qual=50)
-        _batting_df.columns = [c.strip() for c in _batting_df.columns]
-    return _batting_df
-
-
-def get_pitching_stats() -> pd.DataFrame:
-    global _pitching_df
-    if _pitching_df is None:
-        logger.info("Loading FanGraphs pitching stats for %d...", CURRENT_SEASON)
-        _pitching_df = pybaseball.pitching_stats(CURRENT_SEASON, qual=1)
-        _pitching_df.columns = [c.strip() for c in _pitching_df.columns]
-    return _pitching_df
-
-
-# ---------------------------------------------------------------------------
-# Player ID lookup
+# Player ID helpers
 # ---------------------------------------------------------------------------
 
 @lru_cache(maxsize=512)
-def lookup_player_id(last: str, first: str) -> int | None:
+def _mlbam_id_for_name(full_name: str) -> int | None:
+    """Use statsapi to resolve a player name to an MLBAM ID."""
     try:
-        result = pybaseball.playerid_lookup(last, first)
-        if result.empty:
-            return None
-        row = result.iloc[0]
-        return int(row.get("key_mlbam") or row.get("mlbam_id") or 0) or None
-    except Exception as e:
-        logger.warning("ID lookup failed for %s %s: %s", first, last, e)
-        return None
+        results = statsapi.lookup_player(full_name)
+        if results:
+            return results[0]["id"]
+        # Try last-name only for partial matches
+        last = full_name.split()[-1]
+        results = statsapi.lookup_player(last)
+        if results:
+            return results[0]["id"]
+    except Exception as exc:
+        logger.debug("ID lookup failed for %s: %s", full_name, exc)
+    return None
 
 
-def name_to_id(full_name: str) -> int | None:
-    parts = full_name.strip().split()
-    if len(parts) < 2:
-        return None
-    last = parts[-1]
-    first = parts[0]
-    return lookup_player_id(last, first)
+# ---------------------------------------------------------------------------
+# Season stats from MLB Stats API
+# ---------------------------------------------------------------------------
+
+@lru_cache(maxsize=512)
+def _get_batter_season_stats(mlbam_id: int, season: int) -> dict:
+    try:
+        result = statsapi.player_stat_data(mlbam_id, type="season", group="hitting")
+        player_info = {
+            "hand": result.get("bat_side", "R"),
+        }
+        for s in result.get("stats", []):
+            if str(s.get("season")) == str(season):
+                player_info["stats"] = s["stats"]
+                return player_info
+        # Fall back to first entry if season not explicitly matched
+        if result.get("stats"):
+            player_info["stats"] = result["stats"][0]["stats"]
+        return player_info
+    except Exception as exc:
+        logger.debug("Batter season stats failed id=%s: %s", mlbam_id, exc)
+        return {}
+
+
+@lru_cache(maxsize=512)
+def _get_pitcher_season_stats(mlbam_id: int, season: int) -> dict:
+    try:
+        result = statsapi.player_stat_data(mlbam_id, type="season", group="pitching")
+        player_info = {
+            "hand": result.get("pitch_hand", "R"),
+        }
+        for s in result.get("stats", []):
+            if str(s.get("season")) == str(season):
+                player_info["stats"] = s["stats"]
+                return player_info
+        if result.get("stats"):
+            player_info["stats"] = result["stats"][0]["stats"]
+        return player_info
+    except Exception as exc:
+        logger.debug("Pitcher season stats failed id=%s: %s", mlbam_id, exc)
+        return {}
+
+
+# ---------------------------------------------------------------------------
+# Statcast helpers (Baseball Savant)
+# ---------------------------------------------------------------------------
+
+@lru_cache(maxsize=256)
+def _statcast_batter_cached(mlbam_id: int, start: str, end: str) -> pd.DataFrame:
+    try:
+        logger.debug("Fetching Statcast batter data id=%s", mlbam_id)
+        df = pybaseball.statcast_batter(start, end, player_id=mlbam_id)
+        return df if not df.empty else pd.DataFrame()
+    except Exception as exc:
+        logger.debug("Statcast batter failed id=%s: %s", mlbam_id, exc)
+        return pd.DataFrame()
+
+
+@lru_cache(maxsize=256)
+def _statcast_pitcher_cached(mlbam_id: int, start: str, end: str) -> pd.DataFrame:
+    try:
+        logger.debug("Fetching Statcast pitcher data id=%s", mlbam_id)
+        df = pybaseball.statcast_pitcher(start, end, player_id=mlbam_id)
+        return df if not df.empty else pd.DataFrame()
+    except Exception as exc:
+        logger.debug("Statcast pitcher failed id=%s: %s", mlbam_id, exc)
+        return pd.DataFrame()
+
+
+def _woba_by_pitch_type(df: pd.DataFrame, woba_col: str = "estimated_woba_using_speedangle") -> dict:
+    """Aggregate mean wOBA per pitch-type category from a Statcast DataFrame."""
+    result = {}
+    if df.empty or "pitch_type" not in df.columns or woba_col not in df.columns:
+        return result
+    for pt, grp in df.groupby("pitch_type"):
+        if not pt or pd.isna(pt):
+            continue
+        val = grp[woba_col].mean()
+        if not pd.isna(val):
+            result[str(pt).upper()] = round(float(val), 3)
+    return result
 
 
 # ---------------------------------------------------------------------------
 # Batter profile
 # ---------------------------------------------------------------------------
 
+def _league_avg_outcome_rates() -> dict:
+    return {
+        "HR": 0.030, "BB": 0.085, "K": 0.225,
+        "1B": 0.145, "2B": 0.050, "3B": 0.005, "OUT": 0.460,
+    }
+
+
 def get_batter_profile(player_name: str, player_id: int | None = None) -> dict:
     """
-    Returns a dict with:
-      - outcome_rates: {HR, BB, K, 1B, 2B, 3B, OUT}
-      - woba_vs_hand: {L: float, R: float}
-      - woba_vs_pitch: {pitch_type: float, ...}
-      - hand: 'L' | 'R' | 'S'
+    Returns a dict with outcome_rates, woba, woba_vs_hand, woba_vs_pitch, hand.
     Falls back to league averages when data is missing.
     """
     profile = {
@@ -101,112 +152,69 @@ def get_batter_profile(player_name: str, player_id: int | None = None) -> dict:
         "hand": "R",
     }
 
-    batting = get_batting_stats()
-    row = _find_player_row(batting, player_name)
-    if row is not None:
-        profile.update(_extract_batter_rates(row))
+    mlbam_id = player_id or _mlbam_id_for_name(player_name)
+    if not mlbam_id:
+        return profile
 
-    mlbam_id = player_id or name_to_id(player_name)
-    if mlbam_id:
-        _enrich_batter_statcast(profile, mlbam_id)
-        _enrich_batter_splits(profile, mlbam_id)
+    # --- MLB Stats API season totals ---
+    season_data = _get_batter_season_stats(mlbam_id, CURRENT_SEASON)
+    profile["hand"] = season_data.get("hand", "R")
+    stats = season_data.get("stats", {})
+    if stats:
+        pa = int(stats.get("plateAppearances", 0))
+        if pa >= 20:
+            hr = int(stats.get("homeRuns", 0))
+            bb = int(stats.get("baseOnBalls", 0)) + int(stats.get("intentionalWalks", 0))
+            k  = int(stats.get("strikeOuts", 0))
+            h  = int(stats.get("hits", 0))
+            doubles = int(stats.get("doubles", 0))
+            triples = int(stats.get("triples", 0))
+            singles = max(h - doubles - triples - hr, 0)
 
-    return profile
+            hr_r = hr / pa
+            bb_r = bb / pa
+            k_r  = k  / pa
+            singles_r  = singles  / pa
+            doubles_r  = doubles  / pa
+            triples_r  = triples  / pa
+            out_r = max(1.0 - hr_r - bb_r - k_r - singles_r - doubles_r - triples_r, 0.05)
 
+            profile["outcome_rates"] = {
+                "HR": hr_r, "BB": bb_r, "K": k_r,
+                "1B": singles_r, "2B": doubles_r, "3B": triples_r, "OUT": out_r,
+            }
+            # Estimate wOBA from OBP + slugging components
+            obp = float(stats.get("obp", "0.320").lstrip(".") or "0.320")
+            slg = float(stats.get("slg", "0.400").lstrip(".") or "0.400")
+            # wOBA ~ 0.47*OBP + 0.53*SLG (rough linear approx)
+            woba_est = round(0.47 * obp + 0.53 * slg, 3)
+            profile["woba"] = woba_est
 
-def _find_player_row(df: pd.DataFrame, name: str):
-    name_col = "Name" if "Name" in df.columns else df.columns[0]
-    matches = df[df[name_col].str.contains(name.split()[-1], case=False, na=False)]
-    if matches.empty:
-        return None
-    return matches.iloc[0]
-
-
-def _league_avg_outcome_rates() -> dict:
-    return {"HR": 0.030, "BB": 0.085, "K": 0.225, "1B": 0.145, "2B": 0.050, "3B": 0.005, "OUT": 0.460}
-
-
-def _extract_batter_rates(row) -> dict:
-    pa = float(row.get("PA", 1) or 1)
-    if pa < 10:
-        return {}
-
-    hr = float(row.get("HR", 0) or 0) / pa
-    bb = float(row.get("BB", 0) or 0) / pa
-    k  = float(row.get("SO", row.get("K", 0)) or 0) / pa
-    h  = float(row.get("H", 0) or 0) / pa
-    doubles = float(row.get("2B", 0) or 0) / pa
-    triples = float(row.get("3B", 0) or 0) / pa
-    singles = max(h - doubles - triples - hr, 0)
-
-    total_event = hr + bb + k + singles + doubles + triples
-    out = max(1.0 - total_event, 0.05)
-
-    woba_val = float(row.get("wOBA", 0.320) or 0.320)
-
-    return {
-        "outcome_rates": {
-            "HR": hr, "BB": bb, "K": k,
-            "1B": singles, "2B": doubles, "3B": triples,
-            "OUT": out,
-        },
-        "woba": woba_val,
-    }
-
-
-def _enrich_batter_statcast(profile: dict, mlbam_id: int) -> None:
+    # --- Statcast enrichment (Baseball Savant) ---
     start, end = _season_dates(CURRENT_SEASON)
-    try:
-        sc = pybaseball.statcast_batter(start, end, player_id=mlbam_id)
-        if sc.empty:
-            return
+    sc = _statcast_batter_cached(mlbam_id, start, end)
+    if not sc.empty:
         # wOBA by pitch type
-        woba_by_pitch = {}
-        for pt, grp in sc.groupby("pitch_type"):
-            if pt and not pd.isna(pt):
-                woba_col = grp["estimated_woba_using_speedangle"] if "estimated_woba_using_speedangle" in grp.columns else grp.get("woba_value")
-                if woba_col is not None:
-                    val = woba_col.mean()
-                    if not pd.isna(val):
-                        woba_by_pitch[str(pt).upper()] = round(float(val), 3)
+        woba_by_pitch = _woba_by_pitch_type(sc)
         if woba_by_pitch:
             profile["woba_vs_pitch"].update(woba_by_pitch)
 
-        # handedness from stand column
+        # L/R splits from p_throws
+        if "p_throws" in sc.columns:
+            for hand in ("L", "R"):
+                subset = sc[sc["p_throws"] == hand]
+                if len(subset) >= 20:
+                    val = subset["estimated_woba_using_speedangle"].mean()
+                    if not pd.isna(val):
+                        profile["woba_vs_hand"][hand] = round(float(val), 3)
+
+        # Handedness from stand column (override)
         if "stand" in sc.columns:
             stands = sc["stand"].dropna()
             if not stands.empty:
-                profile["hand"] = stands.mode()[0]
-    except Exception as e:
-        logger.warning("Statcast batter fetch failed for id=%s: %s", mlbam_id, e)
+                profile["hand"] = stands.mode().iloc[0]
 
-
-def _enrich_batter_splits(profile: dict, mlbam_id: int) -> None:
-    """Fetch L/R split wOBA from FanGraphs splits API."""
-    try:
-        url = (
-            f"https://www.fangraphs.com/api/leaders/splits/splits-leaders"
-            f"?columngroup=&stat=bat&startseason={CURRENT_SEASON}&endseason={CURRENT_SEASON}"
-            f"&splitArr=&splitArrPitches=&autoPt=false&splitTeams=false&statgroup=1"
-            f"&startinnings=1&endinnings=9&numteams=0&active=1&postseason=0&players={mlbam_id}&type=0"
-        )
-        resp = requests.get(url, timeout=10)
-        if resp.status_code != 200:
-            return
-        data = resp.json()
-        splits_data = data.get("data", data) if isinstance(data, dict) else data
-        woba_vs = {}
-        for entry in splits_data:
-            split = str(entry.get("Split", entry.get("split", "")))
-            woba = entry.get("wOBA")
-            if split == "vs LHP" and woba:
-                woba_vs["L"] = float(woba)
-            elif split == "vs RHP" and woba:
-                woba_vs["R"] = float(woba)
-        if woba_vs:
-            profile["woba_vs_hand"].update(woba_vs)
-    except Exception as e:
-        logger.debug("Splits fetch failed for id=%s: %s", mlbam_id, e)
+    return profile
 
 
 # ---------------------------------------------------------------------------
@@ -215,12 +223,7 @@ def _enrich_batter_splits(profile: dict, mlbam_id: int) -> None:
 
 def get_pitcher_profile(player_name: str, player_id: int | None = None) -> dict:
     """
-    Returns a dict with:
-      - era, fip, whip
-      - pitch_mix: {pitch_type: pct, ...}  (sums to 1.0)
-      - pitch_woba_allowed: {pitch_type: float, ...}
-      - hand: 'L' | 'R'
-      - bullpen_era (fallback)
+    Returns a dict with era, fip, whip, pitch_mix, pitch_woba_allowed, hand.
     """
     profile = {
         "name": player_name,
@@ -232,84 +235,114 @@ def get_pitcher_profile(player_name: str, player_id: int | None = None) -> dict:
         "pitch_woba_allowed": dict(LEAGUE_AVG_WOBA_BY_PITCH),
     }
 
-    pitching = get_pitching_stats()
-    row = _find_player_row(pitching, player_name)
-    if row is not None:
-        profile.update(_extract_pitcher_rates(row))
+    if player_name in ("Unknown", "TBD", ""):
+        return profile
 
-    mlbam_id = player_id or name_to_id(player_name)
-    if mlbam_id:
-        _enrich_pitcher_statcast(profile, mlbam_id)
+    mlbam_id = player_id or _mlbam_id_for_name(player_name)
+    if not mlbam_id:
+        return profile
+
+    # --- MLB Stats API season totals ---
+    season_data = _get_pitcher_season_stats(mlbam_id, CURRENT_SEASON)
+    profile["hand"] = season_data.get("hand", "R")
+    stats = season_data.get("stats", {})
+    if stats:
+        era_str = stats.get("era", "4.20")
+        whip_str = stats.get("whip", "1.30")
+        profile["era"] = float(era_str) if era_str and era_str != "-.--" else 4.20
+        profile["whip"] = float(whip_str) if whip_str and whip_str != "-.--" else 1.30
+
+        # Compute FIP from components
+        ip_str = stats.get("inningsPitched", "0")
+        try:
+            ip = float(ip_str)
+        except (ValueError, TypeError):
+            ip = 0
+        if ip >= 5:
+            hr = int(stats.get("homeRuns", 0))
+            bb = int(stats.get("baseOnBalls", 0)) + int(stats.get("hitByPitch", 0))
+            k  = int(stats.get("strikeOuts", 0))
+            profile["fip"] = round((13 * hr + 3 * bb - 2 * k) / ip + 3.2, 2)
+
+    # --- Statcast pitch mix + effectiveness ---
+    start, end = _season_dates(CURRENT_SEASON)
+    sc = _statcast_pitcher_cached(mlbam_id, start, end)
+    if not sc.empty:
+        total = len(sc)
+        mix = {}
+        for pt, grp in sc.groupby("pitch_type"):
+            if not pt or pd.isna(pt):
+                continue
+            mix[str(pt).upper()] = round(len(grp) / total, 3)
+        if mix:
+            profile["pitch_mix"] = mix
+
+        if "p_throws" in sc.columns:
+            throws = sc["p_throws"].dropna()
+            if not throws.empty:
+                profile["hand"] = throws.mode().iloc[0]
+
+        # wOBA allowed by pitch type (use woba_value — actual outcomes)
+        woba_col = "woba_value" if "woba_value" in sc.columns else "estimated_woba_using_speedangle"
+        woba_allowed = _woba_by_pitch_type(sc, woba_col)
+        if woba_allowed:
+            profile["pitch_woba_allowed"].update(woba_allowed)
 
     return profile
 
 
-def _extract_pitcher_rates(row) -> dict:
-    return {
-        "era": float(row.get("ERA", 4.20) or 4.20),
-        "fip": float(row.get("FIP", 4.10) or 4.10),
-        "whip": float(row.get("WHIP", 1.30) or 1.30),
-    }
+# ---------------------------------------------------------------------------
+# Bullpen profile (team aggregate via MLB Stats API)
+# ---------------------------------------------------------------------------
 
-
-def _enrich_pitcher_statcast(profile: dict, mlbam_id: int) -> None:
-    start, end = _season_dates(CURRENT_SEASON)
+@lru_cache(maxsize=64)
+def _team_id_for_name(team_name: str) -> int | None:
+    """Look up team ID from MLB Stats API."""
     try:
-        sc = pybaseball.statcast_pitcher(start, end, player_id=mlbam_id)
-        if sc.empty:
-            return
+        result = statsapi.get("teams", {"sportId": 1, "season": CURRENT_SEASON})
+        teams = result.get("teams", [])
+        keyword = team_name.split()[-1].lower()
+        for t in teams:
+            if keyword in t.get("name", "").lower() or keyword in t.get("teamName", "").lower():
+                return t["id"]
+    except Exception as exc:
+        logger.debug("Team ID lookup failed for %s: %s", team_name, exc)
+    return None
 
-        # Pitch mix
-        total = len(sc)
-        mix = {}
-        for pt, grp in sc.groupby("pitch_type"):
-            if pt and not pd.isna(pt):
-                mix[str(pt).upper()] = round(len(grp) / total, 3)
-        if mix:
-            profile["pitch_mix"] = mix
-
-        # Pitcher handedness
-        if "p_throws" in sc.columns:
-            throws = sc["p_throws"].dropna()
-            if not throws.empty:
-                profile["hand"] = throws.mode()[0]
-
-        # wOBA allowed by pitch type
-        woba_allowed = {}
-        for pt, grp in sc.groupby("pitch_type"):
-            if pt and not pd.isna(pt):
-                woba_col = grp.get("woba_value") if "woba_value" in grp.columns else None
-                if woba_col is not None:
-                    val = woba_col.mean()
-                    if not pd.isna(val):
-                        woba_allowed[str(pt).upper()] = round(float(val), 3)
-        if woba_allowed:
-            profile["pitch_woba_allowed"].update(woba_allowed)
-
-    except Exception as e:
-        logger.warning("Statcast pitcher fetch failed for id=%s: %s", mlbam_id, e)
-
-
-# ---------------------------------------------------------------------------
-# Bullpen profile (team aggregate)
-# ---------------------------------------------------------------------------
 
 def get_bullpen_profile(team_name: str) -> dict:
-    """Aggregate bullpen ERA/FIP from pitching leaderboard for a given team."""
-    pitching = get_pitching_stats()
-    team_col = "Team" if "Team" in pitching.columns else None
-    if team_col is None:
+    """Return aggregated bullpen ERA/FIP for the given team using MLB Stats API."""
+    team_id = _team_id_for_name(team_name)
+    if not team_id:
         return {"era": 4.20, "fip": 4.10}
 
-    # Filter relievers: IP < 40 as a rough heuristic
-    team_df = pitching[pitching[team_col].str.contains(team_name.split()[-1], case=False, na=False)]
-    if team_df.empty:
+    try:
+        result = statsapi.get("team_stats", {
+            "teamId": team_id,
+            "season": CURRENT_SEASON,
+            "stats": "season",
+            "group": "pitching",
+        })
+        splits = result.get("stats", [{}])[0].get("splits", [])
+        if not splits:
+            return {"era": 4.20, "fip": 4.10}
+
+        s = splits[0]["stat"]
+        era_str = s.get("era", "4.20")
+        era = float(era_str) if era_str and era_str != "-.--" else 4.20
+
+        ip_str = s.get("inningsPitched", "0")
+        ip = float(ip_str) if ip_str else 0
+        if ip > 0:
+            hr = int(s.get("homeRuns", 0))
+            bb = int(s.get("baseOnBalls", 0)) + int(s.get("hitByPitch", 0))
+            k  = int(s.get("strikeOuts", 0))
+            fip = round((13 * hr + 3 * bb - 2 * k) / ip + 3.2, 2)
+        else:
+            fip = 4.10
+
+        # Team aggregate includes starters; bullpen is typically 5–10% worse than team ERA
+        return {"era": round(era * 1.05, 2), "fip": round(fip * 1.05, 2)}
+    except Exception as exc:
+        logger.debug("Bullpen stats failed for %s: %s", team_name, exc)
         return {"era": 4.20, "fip": 4.10}
-
-    relievers = team_df[pd.to_numeric(team_df.get("IP", pd.Series([])), errors="coerce").fillna(0) < 40]
-    if relievers.empty:
-        relievers = team_df
-
-    era = float(pd.to_numeric(relievers["ERA"], errors="coerce").mean() or 4.20)
-    fip = float(pd.to_numeric(relievers.get("FIP", pd.Series([])), errors="coerce").mean() or 4.10)
-    return {"era": era, "fip": fip}

@@ -21,7 +21,7 @@ BASE_RUNNING = {
     "groundout_runner_3b_scores_prob": 0.85, # prob runner on 3B scores on groundout (<2 outs)
 }
 
-# League average wOBA by pitch type (2023 baselines)
+# League average wOBA by pitch type (baseline estimates)
 LEAGUE_AVG_WOBA_BY_PITCH = {
     "FF": 0.330,  # 4-seam fastball
     "SI": 0.320,  # sinker
@@ -41,4 +41,4 @@ BREAKING_TYPES = {"SL", "ST", "CU", "KC"}
 OFFSPEED_TYPES = {"CH", "FS"}
 
 # Season for stats
-CURRENT_SEASON = 2025
+CURRENT_SEASON = 2026
