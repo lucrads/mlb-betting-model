@@ -635,19 +635,17 @@ footer { margin-top: 32px; text-align: center; font-size: 0.72rem; color: #4a556
   </table>
 </div>
 
-<!-- By recommendation -->
+<!-- By confidence classification -->
 <div class="bt-section">
-  <div class="bt-section-hdr">ML Hit Rate by Model Recommendation</div>
+  <div class="bt-section-hdr">ML Hit Rate by Model Confidence</div>
   <table class="bt-table">
     <thead><tr>
-      <th>Signal</th><th>Games</th><th>Correct</th><th>Hit %</th><th></th>
+      <th>Confidence Level</th><th>Games</th><th>Correct</th><th>Hit %</th><th></th>
     </tr></thead>
     <tbody>
-    {% for rec in ["BET", "LEAN", "PASS"] %}
-    {% if rec in bt.by_recommendation %}
-    {% set stats = bt.by_recommendation[rec] %}
+    {% for rec, stats in bt.by_recommendation.items() %}
     <tr>
-      <td><span class="badge badge-{{ rec }}">{{ rec }}</span></td>
+      <td><strong>{{ rec }}</strong></td>
       <td>{{ stats.games }}</td>
       <td>{{ stats.hits }}</td>
       <td class="{% if stats.rate >= 0.60 %}rate-good{% elif stats.rate >= 0.52 %}rate-ok{% else %}rate-bad{% endif %}">
@@ -659,7 +657,6 @@ footer { margin-top: 32px; text-align: center; font-size: 0.72rem; color: #4a556
         </div>
       </td>
     </tr>
-    {% endif %}
     {% endfor %}
     </tbody>
   </table>

@@ -117,6 +117,17 @@ def _process_game(game: dict, odds_data: dict) -> dict:
     model_favors_home = sim["home_win_pct"] >= sim["away_win_pct"]
     model_correct_ml = model_favors_home == home_won
 
+    # Confidence-based classification (used when no live odds exist)
+    confidence = max(sim["home_win_pct"], sim["away_win_pct"])
+    if confidence >= 0.70:
+        confidence_rec = "HIGH"
+    elif confidence >= 0.60:
+        confidence_rec = "MED"
+    elif confidence >= 0.55:
+        confidence_rec = "LEAN"
+    else:
+        confidence_rec = "PASS"
+
     # Track per-bet outcomes for edge-range analysis
     bet_results = []
     for bet in edge.get("best_bets", []):
@@ -146,8 +157,10 @@ def _process_game(game: dict, odds_data: dict) -> dict:
         "home_won":         home_won,
         "actual_total":     actual_home + actual_away,
         "model_favors_home": model_favors_home,
-        "model_correct_ml": model_correct_ml,
-        "recommendation":   edge["recommendation"],
+        "model_correct_ml":  model_correct_ml,
+        "confidence":        round(confidence, 4),
+        "confidence_rec":    confidence_rec,
+        "recommendation":    edge["recommendation"],
         "home_edge":        edge.get("home_edge"),
         "away_edge":        edge.get("away_edge"),
         "total_edge_over":  edge.get("total_edge_over"),

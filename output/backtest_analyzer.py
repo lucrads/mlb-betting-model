@@ -50,13 +50,19 @@ def analyze_backtest(results: list[dict]) -> dict | None:
                 "rate": hits / len(subset),
             }
 
-    # --- By recommendation ---
+    # --- By confidence classification (odds-independent) ---
     by_recommendation = {}
-    for rec in ("BET", "LEAN", "PASS"):
-        subset = [r for r in results if r.get("recommendation") == rec]
+    # Prefer confidence_rec (always populated); fall back to recommendation for
+    # records that pre-date this field or were run with live odds.
+    for label, rec_key in [("HIGH (70%+)", "HIGH"), ("MED (60–70%)", "MED"),
+                           ("LEAN (55–60%)", "LEAN"), ("PASS (<55%)", "PASS")]:
+        subset = [r for r in results if r.get("confidence_rec") == rec_key]
+        if not subset:
+            # legacy records without confidence_rec — fall back to recommendation
+            subset = [r for r in results if r.get("recommendation") == rec_key]
         if subset:
             hits = sum(1 for r in subset if r.get("model_correct_ml"))
-            by_recommendation[rec] = {
+            by_recommendation[label] = {
                 "games": len(subset),
                 "hits": hits,
                 "rate": hits / len(subset),
