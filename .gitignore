@@ -10,3 +10,6 @@ build/
 report_*.html
 pybaseball_cache/
 store/
+backtest_results*.json
+backtest_before.json
+backtest_after.json
