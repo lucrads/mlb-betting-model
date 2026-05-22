@@ -154,11 +154,19 @@ def write_backtest_records(records: list) -> None:
     _write(_bt_dir() / "game_records.json", records)
 
 
-def append_backtest_records(new_records: list) -> None:
-    """Merge new records into the store, skipping any game_id already present."""
+def append_backtest_records(new_records: list, replace: bool = False) -> None:
+    """Merge new records into the store.
+
+    replace=False (default): skip game_ids already present.
+    replace=True: overwrite existing records with matching game_id (used by --refresh).
+    """
     existing = read_backtest_records()
-    existing_ids = {r["game_id"] for r in existing}
-    merged = existing + [r for r in new_records if r["game_id"] not in existing_ids]
+    if replace:
+        new_ids = {r["game_id"] for r in new_records}
+        merged = [r for r in existing if r["game_id"] not in new_ids] + new_records
+    else:
+        existing_ids = {r["game_id"] for r in existing}
+        merged = existing + [r for r in new_records if r["game_id"] not in existing_ids]
     write_backtest_records(merged)
 
 

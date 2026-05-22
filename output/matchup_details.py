@@ -20,18 +20,25 @@ def compute_matchup_details(game: dict) -> dict:
     home_profiles = game.get("home_lineup_profiles", [])
     away_sp = game.get("away_pitcher_profile", {})
     home_sp = game.get("home_pitcher_profile", {})
+    wind_mph = game.get("outward_wind_mph", 0.0)
+    park_hr_factor = game.get("park_hr_factor", 1.0)
 
     return {
-        "away_batters": [_batter_vs_pitcher(b, home_sp) for b in away_profiles],
-        "home_batters": [_batter_vs_pitcher(b, away_sp) for b in home_profiles],
+        "away_batters": [_batter_vs_pitcher(b, home_sp, wind_mph, park_hr_factor) for b in away_profiles],
+        "home_batters": [_batter_vs_pitcher(b, away_sp, wind_mph, park_hr_factor) for b in home_profiles],
         "away_sp": _pitcher_summary(away_sp),
         "home_sp": _pitcher_summary(home_sp),
-        "away_lineup_score": _lineup_score(away_profiles, home_sp),
-        "home_lineup_score": _lineup_score(home_profiles, away_sp),
+        "away_lineup_score": _lineup_score(away_profiles, home_sp, wind_mph, park_hr_factor),
+        "home_lineup_score": _lineup_score(home_profiles, away_sp, wind_mph, park_hr_factor),
     }
 
 
-def _batter_vs_pitcher(batter: dict, pitcher: dict) -> dict:
+def _batter_vs_pitcher(
+    batter: dict,
+    pitcher: dict,
+    outward_wind_mph: float = 0.0,
+    park_hr_factor: float = 1.0,
+) -> dict:
     """Compute how a specific batter matches up against a specific pitcher."""
     pitcher_hand = pitcher.get("hand", "R")
     batter_woba = batter.get("woba") or 0.0
@@ -50,11 +57,7 @@ def _batter_vs_pitcher(batter: dict, pitcher: dict) -> dict:
     combined = split_mult * matchup_factor
     combined = float(np.clip(combined, 0.50, 1.80))
 
-    # PhD-grade calculus scores from the multinomial-logit engine:
-    #  - probs        : softmax(η) at empty bases / 0 outs (matchup-only signal)
-    #  - e_runs_per_pa: RE24 expected run delta from leadoff state
-    #  - woba_matchup : linear-weights wOBA equivalent of the prob vector
-    probs = compute_at_bat_probs(batter, pitcher, outward_wind_mph=0.0)
+    probs = compute_at_bat_probs(batter, pitcher, outward_wind_mph=outward_wind_mph, park_hr_factor=park_hr_factor)
     e_runs = expected_runs_per_pa(probs)
     woba_matchup = woba_from_probs(probs)
 
@@ -179,9 +182,14 @@ def _pitch_edges(
     return edges[:3]
 
 
-def _lineup_score(batter_profiles: list[dict], opposing_sp: dict) -> float:
+def _lineup_score(
+    batter_profiles: list[dict],
+    opposing_sp: dict,
+    outward_wind_mph: float = 0.0,
+    park_hr_factor: float = 1.0,
+) -> float:
     """Average combined matchup score for a lineup vs a pitcher. 1.0 = neutral."""
     if not batter_profiles:
         return 1.0
-    scores = [_batter_vs_pitcher(b, opposing_sp)["combined"] for b in batter_profiles]
+    scores = [_batter_vs_pitcher(b, opposing_sp, outward_wind_mph, park_hr_factor)["combined"] for b in batter_profiles]
     return round(float(np.mean(scores)), 3)

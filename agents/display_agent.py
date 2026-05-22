@@ -95,6 +95,7 @@ def run(date: str, output_dir: str = ".") -> str:
         enriched_game["away_lineup_profiles"] = p.get("away_lineup_profiles", [])
         enriched_game["outward_wind_mph"] = p.get("outward_wind_mph", 0.0)
         enriched_game["wind"] = p.get("wind", {"description": "", "dome": False})
+        enriched_game["park_hr_factor"] = p.get("park_hr_factor", 1.0)
 
         # Resolve odds for this game (from immutable stored pre-game lines)
         game_odds = stored_odds.get(gid)

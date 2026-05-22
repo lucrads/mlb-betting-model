@@ -29,6 +29,7 @@ from data.weather import get_wind_context
 from model.simulator import build_bullpen_profile
 import store
 import config
+from config import PARK_HR_FACTORS
 
 logging.basicConfig(
     level=logging.INFO,
@@ -117,6 +118,7 @@ def run(date: str, odds_key: str | None = None) -> dict:
         wind = get_wind_context(game.get("venue", ""), date)
         logger.info("    Wind: %s", wind["description"])
 
+        park_hr_factor = PARK_HR_FACTORS.get(game["home_team"], 1.0)
         profiles[gid] = {
             "home_pitcher_profile":  home_pitcher_profile,
             "away_pitcher_profile":  away_pitcher_profile,
@@ -128,6 +130,7 @@ def run(date: str, odds_key: str | None = None) -> dict:
             "away_lineup_profiles":  away_lineup_profiles,
             "outward_wind_mph":      wind["outward_wind_mph"],
             "wind":                  wind,
+            "park_hr_factor":        park_hr_factor,
         }
         weather_map[gid] = wind
 

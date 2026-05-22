@@ -82,24 +82,25 @@ def run(date: str) -> dict:
         home_lineup = p["home_lineup_profiles"]
         away_lineup = p["away_lineup_profiles"]
         wind_mph = p.get("outward_wind_mph", 0.0)
+        park_hr_factor = p.get("park_hr_factor", 1.0)
 
-        # Away batters face home pitcher (starter then bullpen)
+        # Away batters face home pitcher (starter then bullpen); both play in home park
         away_vs_starter = [
-            compute_at_bat_probs(b, home_starter, outward_wind_mph=wind_mph)
+            compute_at_bat_probs(b, home_starter, outward_wind_mph=wind_mph, park_hr_factor=park_hr_factor)
             for b in away_lineup
         ]
         away_vs_bullpen = [
-            compute_at_bat_probs(b, home_bullpen, outward_wind_mph=wind_mph)
+            compute_at_bat_probs(b, home_bullpen, outward_wind_mph=wind_mph, park_hr_factor=park_hr_factor)
             for b in away_lineup
         ]
 
-        # Home batters face away pitcher (starter then bullpen)
+        # Home batters face away pitcher (starter then bullpen); all in home park
         home_vs_starter = [
-            compute_at_bat_probs(b, away_starter, outward_wind_mph=wind_mph)
+            compute_at_bat_probs(b, away_starter, outward_wind_mph=wind_mph, park_hr_factor=park_hr_factor)
             for b in home_lineup
         ]
         home_vs_bullpen = [
-            compute_at_bat_probs(b, away_bullpen, outward_wind_mph=wind_mph)
+            compute_at_bat_probs(b, away_bullpen, outward_wind_mph=wind_mph, park_hr_factor=park_hr_factor)
             for b in home_lineup
         ]
 

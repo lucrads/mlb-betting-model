@@ -469,7 +469,7 @@ footer { margin-top: 32px; text-align: center; font-size: 0.7rem; color: #4a5568
   <div style="padding:0 16px 10px;font-size:.7rem;color:var(--muted);">
     Most likely:
     {% for (h,a), cnt in sim.most_common_scores %}
-      <span>{{ a }}–{{ h }} ({{ "%.1f"|format(cnt/10) }}%)</span>
+      <span>{{ a }}–{{ h }} ({{ "%.1f"|format(cnt / (sim.n_sims or 1000) * 100) }}%)</span>
     {% endfor %}
   </div>
   {% endif %}

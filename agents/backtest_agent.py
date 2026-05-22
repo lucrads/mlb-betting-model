@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import store
 import config
+from config import PARK_HR_FACTORS
 from data.fetcher import get_games_for_date
 from output.edge_calc import compute_edge
 
@@ -217,6 +218,7 @@ def _run_inline_sim(game: dict, date_str: str) -> dict | None:
             "home_lineup_profiles": p["home_lineup_profiles"],
             "away_lineup_profiles": p["away_lineup_profiles"],
             "outward_wind_mph": p.get("outward_wind_mph", 0.0),
+            "park_hr_factor": p.get("park_hr_factor", PARK_HR_FACTORS.get(game["home_team"], 1.0)),
         }
         # Use reduced sims for historical backfill
         original = config.NUM_SIMULATIONS
@@ -263,9 +265,10 @@ def run(start: str | None = None, end: str | None = None, date: str | None = Non
             logger.info("  +%d new records", len(new))
 
     if all_new:
-        store.append_backtest_records(all_new)
-        logger.info("Appended %d new game records. Total: %d",
-                    len(all_new), len(existing) + len(all_new))
+        store.append_backtest_records(all_new, replace=refresh)
+        total = len(store.read_backtest_records())
+        logger.info("%s %d game records. Total: %d",
+                    "Replaced/appended" if refresh else "Appended", len(all_new), total)
     else:
         logger.info("No new records to add.")
 

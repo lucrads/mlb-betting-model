@@ -146,6 +146,8 @@ def run_game_simulations(gid: str, ab_probs_game: dict, n_sims: int) -> dict:
 
     avg_home = float(np.mean(home_run_totals))
     avg_away = float(np.mean(away_run_totals))
+    total_runs = [h + a for h, a in zip(home_run_totals, away_run_totals)]
+    run_total_std = float(np.std(total_runs))
 
     run_dist: Counter = Counter()
     for (h, a), cnt in score_dist.items():
@@ -158,6 +160,8 @@ def run_game_simulations(gid: str, ab_probs_game: dict, n_sims: int) -> dict:
         "avg_home_runs": round(avg_home, 2),
         "avg_away_runs": round(avg_away, 2),
         "avg_total_runs": round(avg_home + avg_away, 2),
+        "run_total_std": round(run_total_std, 3),
+        "n_sims": n_sims,
         "run_distribution": dict(run_dist),
         "most_common_scores": score_dist.most_common(5),
     }

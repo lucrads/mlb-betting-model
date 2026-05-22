@@ -17,7 +17,6 @@ BASE_RUNNING = {
     "single_runner_1b_to_3b_prob": 0.30,   # prob runner on 1B takes extra base on single
     "single_runner_2b_scores_prob": 0.75,  # prob runner on 2B scores on single
     "double_runner_1b_scores_prob": 0.30,  # prob runner on 1B scores on double
-    "flyout_tag_3b_prob": 0.85,            # prob runner on 3B tags and scores on flyout (<2 outs)
     "groundout_runner_3b_scores_prob": 0.85, # prob runner on 3B scores on groundout (<2 outs)
 }
 
