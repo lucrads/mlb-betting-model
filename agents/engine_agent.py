@@ -26,9 +26,11 @@ from collections import Counter
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from model.matchup import sample_outcome
-from model.simulator import _apply_outcome, _get_active_pitcher
+from model.simulator import _apply_outcome
 import store
 import config
+
+_rng = np.random.default_rng()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -71,7 +73,7 @@ def _simulate_half_inning_fast(
     while outs < 3:
         probs = lineup_probs[current_idx % lineup_size]
         outcome = sample_outcome(probs)
-        runs_scored, bases, outs = _apply_outcome(outcome, bases, outs)
+        runs_scored, bases, outs = _apply_outcome(outcome, bases, outs, _rng)
         runs += runs_scored
         current_idx += 1
         if walkoff and runs > runs_needed:
@@ -161,7 +163,7 @@ def run_game_simulations(gid: str, ab_probs_game: dict, n_sims: int) -> dict:
     }
 
 
-def run(date: str, n_sims: int = None) -> dict:
+def run(date: str, n_sims: int | None = None) -> dict:
     """
     Run Monte Carlo simulations for all games on date.
     Returns dict of {game_id: sim_result} (also written to store).
@@ -178,13 +180,8 @@ def run(date: str, n_sims: int = None) -> dict:
         logger.error("No AB probs found for %s — run math_agent first.", date)
         return {}
 
-    profiles = store.read_player_profiles(date)
-
     results = {}
     for gid, ab_probs_game in ab_probs.items():
-        p = profiles.get(gid, {})
-        home = p.get("home_pitcher_profile", {}).get("name", "Home")
-        away = p.get("away_pitcher_profile", {}).get("name", "Away")
         logger.info("  Simulating game %s (%d sims)...", gid, n_sims)
 
         result = run_game_simulations(gid, ab_probs_game, n_sims)

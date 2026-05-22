@@ -97,6 +97,8 @@ def _lineup_from_boxscore(game_id: int) -> tuple[list[dict], list[dict]]:
             "gamePk": game_id,
             "fields": "liveData,boxscore,teams,batters,battingOrder,players,person,id,fullName",
         })
+        if not data:
+            return [], []
         box = data.get("liveData", {}).get("boxscore", {}).get("teams", {})
 
         home_lineup = _parse_side_lineup(box.get("home", {}))

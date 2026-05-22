@@ -114,23 +114,45 @@ def process_date(date_str: str, existing_ids: set, refresh: bool) -> list[dict]:
         game_odds = stored_odds.get(gid)
         edge = compute_edge(sim, game_odds) if game_odds else compute_edge(sim, None)
 
-        # Bet result tracking
-        bet_results = []
-        if game_odds:
-            for side in ("home", "away"):
-                edge_val = edge.get(f"{side}_edge")
-                if edge_val and abs(edge_val) >= config.LEAN_EDGE_THRESHOLD:
-                    side_won = home_won_actual if side == "home" else not home_won_actual
-                    bet_results.append({
-                        "side": side,
-                        "edge": round(edge_val, 4),
-                        "rec": edge.get("recommendation", "PASS"),
-                        "won": side_won,
-                    })
-
         model_total = sim["avg_total_runs"]
         actual_total = home_score + away_score
         book_total = game_odds.get("total") if game_odds else None
+
+        # Bet result tracking — ML and O/U
+        bet_results = []
+        if game_odds:
+            # ML bets
+            for side in ("home", "away"):
+                edge_val = edge.get(f"{side}_edge")
+                if edge_val and edge_val >= config.LEAN_EDGE_THRESHOLD:
+                    side_won = home_won_actual if side == "home" else not home_won_actual
+                    bet_results.append({
+                        "type": "ML",
+                        "side": side,
+                        "edge": round(edge_val, 4),
+                        "rec": "BET" if edge_val >= config.BET_EDGE_THRESHOLD else "LEAN",
+                        "won": side_won,
+                    })
+            # O/U bets
+            if book_total is not None:
+                push = (actual_total == int(book_total))
+                for side, edge_key in [("over", "total_edge_over"), ("under", "total_edge_under")]:
+                    edge_val = edge.get(edge_key)
+                    if edge_val and edge_val >= config.LEAN_EDGE_THRESHOLD:
+                        if push:
+                            won = None  # push
+                        elif side == "over":
+                            won = actual_total > book_total
+                        else:
+                            won = actual_total < book_total
+                        bet_results.append({
+                            "type": "OU",
+                            "side": side,
+                            "edge": round(edge_val, 4),
+                            "rec": "BET" if edge_val >= config.BET_EDGE_THRESHOLD else "LEAN",
+                            "won": won,
+                            "push": push,
+                        })
 
         record = {
             "game_id": gid,
@@ -152,6 +174,11 @@ def process_date(date_str: str, existing_ids: set, refresh: bool) -> list[dict]:
             "recommendation": edge.get("recommendation", "PASS"),
             "had_odds": bool(game_odds),
             "book_total": book_total,
+            "total_edge_over": edge.get("total_edge_over"),
+            "total_edge_under": edge.get("total_edge_under"),
+            "ou_pick": edge.get("ou_pick"),
+            "ou_edge": edge.get("ou_edge"),
+            "ou_rec": edge.get("ou_rec", "PASS"),
             "bet_results": bet_results,
         }
 
@@ -202,7 +229,7 @@ def _run_inline_sim(game: dict, date_str: str) -> dict | None:
         return None
 
 
-def run(start: str = None, end: str = None, date: str = None, refresh: bool = False) -> list[dict]:
+def run(start: str | None = None, end: str | None = None, date: str | None = None, refresh: bool = False) -> list[dict]:
     """
     Process backtest for a date range or a single date.
     Returns all new records added.

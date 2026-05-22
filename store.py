@@ -18,11 +18,12 @@ odds.json is NEVER overwritten once it exists — this protects backtest accurac
 """
 
 import json
-import os
-import tempfile
 from pathlib import Path
+from typing import TypeVar
 
 _ROOT = Path(__file__).parent / "store"
+
+_T = TypeVar("_T")
 
 
 # ── Internal helpers ─────────────────────────────────────────────────────────
@@ -47,7 +48,7 @@ def _write(path: Path, data) -> None:
     tmp.replace(path)
 
 
-def _read(path: Path, default=None):
+def _read(path: Path, default: _T) -> _T:
     if not path.exists():
         return default
     with open(path, encoding="utf-8") as f:

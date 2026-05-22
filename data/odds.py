@@ -61,7 +61,7 @@ def _normalize_team(name: str) -> str:
 # Public interface
 # ---------------------------------------------------------------------------
 
-def fetch_odds(api_key: str = None, date_str: str = None) -> dict:
+def fetch_odds(api_key: str | None = None, date_str: str | None = None) -> dict:
     """
     Fetch MLB moneyline + totals odds.
 
@@ -87,7 +87,7 @@ def fetch_odds(api_key: str = None, date_str: str = None) -> dict:
 # ESPN scoreboard odds (free, no key)
 # ---------------------------------------------------------------------------
 
-def _fetch_espn_odds(date_str: str = None) -> dict:
+def _fetch_espn_odds(date_str: str | None = None) -> dict:
     """Pull moneylines + totals from ESPN's public scoreboard API (DraftKings lines)."""
     params = {}
     if date_str:

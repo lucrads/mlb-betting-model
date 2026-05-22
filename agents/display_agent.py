@@ -23,8 +23,7 @@ import argparse
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import store
-from data.odds import resolve_game_odds
-from output.edge_calc import compute_edge, prob_to_american
+from output.edge_calc import compute_edge
 from output.matchup_details import compute_matchup_details
 from output.report import generate_report_from_store
 from output.backtest_analyzer import analyze_backtest

@@ -51,7 +51,7 @@ def _default_lineup(team_name: str) -> list:
     return [{"name": f"{team_name} Batter {i+1}", "id": None} for i in range(_DEFAULT_LINEUP_SIZE)]
 
 
-def run(date: str, odds_key: str = None) -> dict:
+def run(date: str, odds_key: str | None = None) -> dict:
     """
     Fetch and store all data for the given date.
     Returns: {"games": [...], "profiles": {...}, "odds": {...}, "weather": {...}}
@@ -146,7 +146,6 @@ def _serialize_games(games: list) -> list:
 
 def _odds_by_game_id(games: list, odds_data: dict) -> dict:
     """Map game_id → odds entry by matching team names."""
-    from data.odds import resolve_game_odds
     result = {}
     for game in games:
         entry = resolve_game_odds(odds_data, game["home_team"], game["away_team"])

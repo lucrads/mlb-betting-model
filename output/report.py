@@ -10,12 +10,14 @@ logger = logging.getLogger(__name__)
 
 
 def _make_env() -> Environment:
+    import json
     templates_dir = os.path.join(os.path.dirname(__file__), "..", "templates")
     env = Environment(loader=FileSystemLoader(templates_dir), autoescape=True)
     env.filters["pct"] = lambda v: f"{v * 100:.1f}%" if v is not None else "N/A"
     env.filters["american"] = _format_american
     env.filters["edge_class"] = _edge_css_class
     env.filters["abs"] = abs
+    env.filters["tojson"] = lambda v: json.dumps(v, default=str)
     return env
 
 

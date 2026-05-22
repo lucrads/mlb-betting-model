@@ -8,252 +8,313 @@
 /* ── Reset & base ── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
-  --bg:       #0d1117;
-  --surface:  #161b22;
-  --surface2: #1c2128;
-  --border:   #30363d;
-  --text:     #e6edf3;
-  --muted:    #8b949e;
-  --green:    #3fb950;
-  --green-bg: #0d1f12;
-  --blue:     #58a6ff;
-  --blue-bg:  #0d1b2e;
-  --red:      #f85149;
-  --red-bg:   #1f0d0d;
-  --yellow:   #d29922;
-  --radius:   10px;
+  --bg:        #0d1117;
+  --surface:   #161b22;
+  --surface2:  #1c2128;
+  --surface3:  #21262d;
+  --border:    #30363d;
+  --text:      #e6edf3;
+  --muted:     #8b949e;
+  --green:     #3fb950;
+  --green-bg:  #0d1f12;
+  --green-bdr: #1a4d27;
+  --blue:      #58a6ff;
+  --blue-bg:   #0d1b2e;
+  --blue-bdr:  #0d2d5e;
+  --red:       #f85149;
+  --red-bg:    #1f0d0d;
+  --yellow:    #d29922;
+  --yellow-bg: #1f1a0d;
+  --radius:    10px;
 }
-body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; line-height: 1.5; padding: 20px; }
+body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; line-height: 1.5; padding: 20px 24px; max-width: 1400px; margin: 0 auto; }
 
-/* ── Top header ── */
-.page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 12px; }
-.page-title { font-size: 1.4rem; font-weight: 700; }
-.page-meta { color: var(--muted); font-size: 0.82rem; }
+/* ── Page header ── */
+.page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; padding-bottom: 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 12px; }
+.page-title { font-size: 1.35rem; font-weight: 700; }
+.page-meta { color: var(--muted); font-size: 0.8rem; margin-top: 2px; }
 .chips { display: flex; gap: 8px; flex-wrap: wrap; }
-.chip { padding: 4px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; }
+.chip { padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
 .chip-total { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
-.chip-bet   { background: var(--green-bg); color: var(--green); border: 1px solid #1a4d27; }
-.chip-lean  { background: var(--blue-bg);  color: var(--blue);  border: 1px solid #0d2d5e; }
+.chip-bet   { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-bdr); }
+.chip-lean  { background: var(--blue-bg);  color: var(--blue);  border: 1px solid var(--blue-bdr); }
+
+/* ── Tab bar ── */
+.tab-bar { display: flex; gap: 2px; margin-bottom: 22px; border-bottom: 1px solid var(--border); }
+.tab-btn { background: none; border: none; border-bottom: 2px solid transparent; color: var(--muted); padding: 8px 18px 10px; font-size: 0.88rem; font-weight: 600; cursor: pointer; margin-bottom: -1px; transition: color .15s; }
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active { color: var(--blue); border-bottom-color: var(--blue); }
+.tab-badge { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; font-size: 0.68rem; padding: 1px 7px; margin-left: 6px; font-weight: 700; }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* ── Confidence badges ── */
+.conf { display: inline-flex; align-items: center; gap: 4px; font-size: 0.68rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; letter-spacing: .04em; white-space: nowrap; }
+.conf-HIGH  { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-bdr); }
+.conf-MED   { background: var(--blue-bg);  color: var(--blue);  border: 1px solid var(--blue-bdr); }
+.conf-LEAN  { background: var(--yellow-bg); color: var(--yellow); border: 1px solid #4a3600; }
+.conf-PASS  { background: var(--surface2);  color: var(--muted);  border: 1px solid var(--border); }
+.conf-BET   { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-bdr); }
+
+/* Rec badge (larger) */
+.badge { font-size: 0.72rem; font-weight: 700; padding: 3px 10px; border-radius: 5px; letter-spacing: .04em; white-space: nowrap; }
+.badge-BET  { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-bdr); }
+.badge-LEAN { background: var(--blue-bg);  color: var(--blue);  border: 1px solid var(--blue-bdr); }
+.badge-PASS { background: var(--surface2);  color: var(--muted); border: 1px solid var(--border); }
 
 /* ── Games grid ── */
-.games-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(480px, 1fr)); gap: 16px; }
+.games-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(520px, 1fr)); gap: 16px; }
 
 /* ── Game card ── */
 .game-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .game-card.has-bet  { border-color: #2ea043; }
 .game-card.has-lean { border-color: #1f6feb; }
 
-/* Card header (always visible) */
-.card-top { padding: 14px 16px 12px; background: var(--surface2); cursor: pointer; user-select: none; }
-.card-top:hover { background: #1e2530; }
-.matchup-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
-.matchup-teams { font-size: 1.05rem; font-weight: 700; }
-.team-away { color: var(--text); }
-.team-sep  { color: var(--muted); margin: 0 6px; font-weight: 300; }
-.team-home { color: var(--text); }
-.pitcher-line { font-size: 0.76rem; color: var(--muted); }
-.badge { font-size: 0.72rem; font-weight: 700; padding: 3px 9px; border-radius: 5px; letter-spacing: .04em; white-space: nowrap; }
-.badge-BET  { background: var(--green-bg); color: var(--green); border: 1px solid #1a4d27; }
-.badge-LEAN { background: var(--blue-bg);  color: var(--blue);  border: 1px solid #0d2d5e; }
-.badge-PASS { background: var(--surface);  color: var(--muted); border: 1px solid var(--border); }
-.status-tag { font-size: 0.68rem; color: var(--muted); background: var(--bg); border: 1px solid var(--border); padding: 2px 7px; border-radius: 4px; }
+.card-header { padding: 14px 16px 10px; background: var(--surface2); cursor: pointer; user-select: none; }
+.card-header:hover { background: var(--surface3); }
+.card-header-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.matchup-label { font-size: 1.05rem; font-weight: 700; }
+.pitcher-line { font-size: 0.73rem; color: var(--muted); margin-top: 3px; }
+.card-badges { display: flex; align-items: center; gap: 6px; flex-shrink: 0; margin-top: 2px; }
+.status-tag { font-size: 0.66rem; color: var(--muted); background: var(--bg); border: 1px solid var(--border); padding: 2px 7px; border-radius: 4px; }
 
-/* Win probability bar */
-.prob-section { padding: 12px 16px 0; }
-.prob-header { display: flex; justify-content: space-between; font-size: 0.78rem; color: var(--muted); margin-bottom: 5px; }
-.prob-val { font-weight: 600; color: var(--text); }
-.prob-bar { height: 7px; background: var(--border); border-radius: 4px; overflow: hidden; display: flex; }
+/* Win prob bar */
+.prob-bar-wrap { padding: 10px 16px 0; }
+.prob-bar-labels { display: flex; justify-content: space-between; font-size: 0.76rem; color: var(--muted); margin-bottom: 4px; }
+.prob-val { font-weight: 700; color: var(--text); }
+.prob-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; display: flex; }
 .prob-bar-away { background: #388bfd; height: 100%; }
 .prob-bar-home { background: #3fb950; height: 100%; }
 
-/* Stats grid */
-.stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 12px 16px; }
-.stat-box { background: var(--surface2); border-radius: 7px; padding: 8px 10px; }
-.stat-lbl { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 2px; }
-.stat-val { font-size: 0.95rem; font-weight: 700; color: var(--text); }
-.stat-sub { font-size: 0.68rem; color: var(--muted); margin-top: 1px; }
+/* ── Odds comparison table ── */
+.odds-section { padding: 12px 16px; }
+.odds-table { width: 100%; border-collapse: collapse; }
+.odds-table th { font-size: 0.64rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 500; padding: 0 8px 6px; text-align: right; }
+.odds-table th:first-child { text-align: left; }
+.odds-table td { padding: 5px 8px; border-top: 1px solid var(--surface3); font-size: 0.82rem; text-align: right; vertical-align: middle; }
+.odds-table td:first-child { text-align: left; color: var(--muted); font-size: 0.76rem; }
+.odds-table tr:first-child td { border-top: none; }
+.odds-team { font-weight: 600; color: var(--text); font-size: 0.82rem; }
+.odds-num { font-feature-settings: "tnum"; }
+.edge-positive-big { color: var(--green); font-weight: 700; }
+.edge-positive-med { color: var(--blue);  font-weight: 700; }
+.edge-negative     { color: var(--red);   font-weight: 600; }
+.edge-neutral      { color: var(--muted); }
+.odds-na           { color: var(--muted); font-style: italic; font-size: 0.74rem; }
+.no-odds-note { font-size: 0.74rem; color: var(--muted); font-style: italic; padding: 4px 0 8px; }
 
-/* Edge rows */
-.edges-section { padding: 0 16px 12px; }
-.edge-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 10px; border-radius: 6px; margin-bottom: 4px; background: var(--surface2); font-size: 0.8rem; }
-.edge-lbl { color: var(--muted); }
-.edge-val { font-weight: 700; }
-.strong-edge .edge-val  { color: var(--green); }
-.lean-edge .edge-val    { color: var(--blue); }
-.negative-edge .edge-val{ color: var(--red); }
-.neutral .edge-val      { color: var(--muted); }
-.no-odds { padding: 0 16px 12px; font-size: 0.78rem; color: var(--muted); font-style: italic; }
-
-/* Common scores */
-.scores-row { padding: 0 16px 10px; font-size: 0.72rem; color: var(--muted); }
-.scores-row span { margin-right: 8px; }
-
-/* Expand toggle */
-.expand-btn { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 16px; font-size: 0.76rem; color: var(--blue); background: none; border: none; border-top: 1px solid var(--border); width: 100%; cursor: pointer; transition: background .15s; }
+/* Expand button */
+.expand-btn { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 16px; font-size: 0.74rem; color: var(--blue); background: none; border: none; border-top: 1px solid var(--border); width: 100%; cursor: pointer; transition: background .15s; }
 .expand-btn:hover { background: var(--surface2); }
-.expand-icon { transition: transform .2s; }
+.expand-icon { transition: transform .2s; font-size: 0.6rem; }
 .expand-icon.open { transform: rotate(180deg); }
 
 /* ── Detail drawer ── */
-.detail-drawer { display: none; padding: 0 16px 16px; border-top: 1px solid var(--border); }
+.detail-drawer { display: none; border-top: 1px solid var(--border); }
 .detail-drawer.open { display: block; }
-.detail-section { margin-top: 14px; }
-.detail-section-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 8px; padding-bottom: 5px; border-bottom: 1px solid var(--border); }
+.detail-section { padding: 14px 16px; border-top: 1px solid var(--border); }
+.detail-section:first-child { border-top: none; }
+.section-title { font-size: 0.68rem; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 10px; }
 
-/* Pitcher comparison */
-.pitcher-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+/* Pitcher compare */
+.pitcher-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .pitcher-card { background: var(--surface2); border-radius: 7px; padding: 10px 12px; }
-.pitcher-name { font-size: 0.88rem; font-weight: 600; margin-bottom: 6px; }
-.pitcher-hand-tag { font-size: 0.68rem; color: var(--muted); background: var(--bg); border: 1px solid var(--border); padding: 1px 6px; border-radius: 4px; margin-left: 6px; }
+.pitcher-name { font-size: 0.88rem; font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.hand-pill { font-size: 0.65rem; color: var(--muted); background: var(--bg); border: 1px solid var(--border); padding: 1px 6px; border-radius: 4px; }
 .pitcher-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 8px; }
-.p-stat { text-align: center; }
-.p-stat-val { font-size: 0.88rem; font-weight: 700; color: var(--text); }
-.p-stat-lbl { font-size: 0.63rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-.pitch-mix-title { font-size: 0.68rem; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .04em; }
-.pitch-bars { display: flex; flex-direction: column; gap: 4px; }
-.pitch-bar-row { display: flex; align-items: center; gap: 6px; font-size: 0.72rem; }
-.pitch-type-tag { min-width: 28px; font-weight: 600; color: var(--text); }
-.pitch-bar-wrap { flex: 1; height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; }
-.pitch-bar-fill { height: 100%; background: #388bfd; border-radius: 3px; }
-.pitch-pct { min-width: 32px; text-align: right; color: var(--muted); }
+.p-stat-val { font-size: 0.88rem; font-weight: 700; }
+.p-stat-lbl { font-size: 0.61rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.good { color: var(--green); }
+.bad  { color: var(--red); }
+
+/* Pitch mix mini-bars */
+.pitch-bars { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; }
+.pitch-bar-row { display: flex; align-items: center; gap: 6px; font-size: 0.7rem; }
+.pitch-type { min-width: 26px; font-weight: 600; }
+.pitch-bar-track { flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.pitch-bar-fill { height: 100%; background: #388bfd; border-radius: 2px; }
+.pitch-pct { min-width: 30px; text-align: right; color: var(--muted); }
 
 /* Batter table */
-.batter-table { width: 100%; border-collapse: collapse; font-size: 0.76rem; }
-.batter-table th { text-align: left; color: var(--muted); font-weight: 500; padding: 5px 8px; border-bottom: 1px solid var(--border); font-size: 0.68rem; text-transform: uppercase; letter-spacing: .04em; }
-.batter-table td { padding: 5px 8px; border-bottom: 1px solid #21262d; }
+.batter-table { width: 100%; border-collapse: collapse; font-size: 0.74rem; }
+.batter-table th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 8px; border-bottom: 1px solid var(--border); font-size: 0.65rem; text-transform: uppercase; letter-spacing: .04em; }
+.batter-table td { padding: 5px 8px; border-bottom: 1px solid var(--surface3); }
 .batter-table tr:last-child td { border-bottom: none; }
 .batter-table tr:hover td { background: var(--surface2); }
-.batter-name { font-weight: 500; }
-.hand-tag { font-size: 0.65rem; color: var(--muted); margin-left: 4px; }
-.matchup-bar-cell { width: 80px; }
-.matchup-bar { height: 5px; border-radius: 3px; }
-.matchup-score { font-weight: 700; font-size: 0.78rem; }
-.favorable   { color: var(--green); }
+.favorable   { color: var(--green); font-weight: 600; }
 .neutral-val { color: var(--muted); }
-.unfavorable { color: var(--red); }
+.unfavorable { color: var(--red); font-weight: 600; }
+.lineup-score-note { font-size: 0.66rem; color: var(--muted); margin-top: 5px; }
 
-/* Edge source box */
-.edge-source-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.edge-source-card { background: var(--surface2); border-radius: 7px; padding: 10px 12px; }
-.edge-source-label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
-.edge-source-value { font-size: 1.1rem; font-weight: 700; }
-.edge-source-sub { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+/* ══════════════════════════════════════════════
+   BACKTEST TAB
+   ══════════════════════════════════════════════ */
 
-/* ── Lines comparison (edge rows) ── */
-.lines-team  { font-weight: 600; color: var(--text); margin-right: 6px; }
-.lines-model { color: var(--muted); font-size: 0.76rem; }
-.lines-sep   { color: var(--muted); margin: 0 5px; }
-.lines-best  { font-weight: 600; color: var(--text); }
-.odds-val    { font-feature-settings: "tnum"; letter-spacing: -0.01em; }
+/* Breadcrumb nav */
+.bt-nav { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; font-size: 0.82rem; }
+.bt-back-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--blue); padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 600; display: flex; align-items: center; gap: 5px; transition: background .15s; }
+.bt-back-btn:hover { background: var(--surface3); }
+.bt-breadcrumb { color: var(--muted); }
+.bt-breadcrumb-cur { color: var(--text); font-weight: 600; }
 
-/* ── Tab system ── */
-.tab-bar { display: flex; gap: 2px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
-.tab-btn { background: none; border: none; border-bottom: 2px solid transparent; color: var(--muted); padding: 8px 18px 10px; font-size: 0.88rem; font-weight: 600; cursor: pointer; margin-bottom: -1px; transition: color .15s; }
-.tab-btn:hover { color: var(--text); }
-.tab-btn.active { color: var(--blue); border-bottom-color: var(--blue); }
-.tab-badge { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; font-size: 0.7rem; padding: 1px 7px; margin-left: 6px; font-weight: 700; }
-.tab-content { display: none; }
-.tab-content.active { display: block; }
+/* Record summary cards */
+.bt-records { display: flex; gap: 14px; margin-bottom: 20px; flex-wrap: wrap; }
+.bt-record-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; flex: 1; min-width: 160px; }
+.bt-record-type { font-size: 0.68rem; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 6px; }
+.bt-record-wl { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em; }
+.bt-record-sub { font-size: 0.76rem; color: var(--muted); margin-top: 3px; }
+.rate-good { color: var(--green); }
+.rate-ok   { color: var(--yellow); }
+.rate-bad  { color: var(--red); }
 
-/* ── Backtest tab ── */
-.bt-summary { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin-bottom: 24px; }
-.bt-kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; text-align: center; }
-.bt-kpi-val { font-size: 1.6rem; font-weight: 700; color: var(--text); line-height: 1; }
-.bt-kpi-lbl { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-top: 5px; }
+/* Tier breakdown table */
 .bt-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 16px; overflow: hidden; }
-.bt-section-hdr { background: var(--surface2); padding: 10px 16px; font-size: 0.72rem; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-bottom: 1px solid var(--border); }
-.bt-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
-.bt-table th { text-align: left; color: var(--muted); font-weight: 500; padding: 8px 16px; border-bottom: 1px solid var(--border); font-size: 0.7rem; text-transform: uppercase; letter-spacing: .04em; }
-.bt-table td { padding: 9px 16px; border-bottom: 1px solid #21262d; }
-.bt-table tr:last-child td { border-bottom: none; }
-.bt-table tr:hover td { background: var(--surface2); }
-.bt-hit-bar-wrap { width: 120px; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; display: inline-block; vertical-align: middle; margin-left: 8px; }
+.bt-section-hdr { background: var(--surface2); padding: 10px 16px; font-size: 0.7rem; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-bottom: 1px solid var(--border); }
+.bt-tier-table { width: 100%; border-collapse: collapse; }
+.bt-tier-table th { text-align: left; font-size: 0.68rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 500; padding: 8px 16px; border-bottom: 1px solid var(--border); }
+.bt-tier-table th:not(:first-child) { text-align: right; }
+.bt-tier-table td { padding: 10px 16px; border-bottom: 1px solid var(--surface3); font-size: 0.84rem; }
+.bt-tier-table td:not(:first-child) { text-align: right; }
+.bt-tier-table tr:last-child td { border-bottom: none; }
+.bt-tier-row { cursor: pointer; }
+.bt-tier-row:hover td { background: var(--surface2); }
+.tier-label { font-weight: 600; }
+.bt-hit-bar-wrap { display: inline-block; width: 80px; height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; vertical-align: middle; margin-left: 8px; }
 .bt-hit-bar { height: 100%; border-radius: 3px; }
-.bt-no-data { padding: 32px; text-align: center; color: var(--muted); font-size: 0.82rem; }
-.rate-good { color: var(--green); font-weight: 700; }
-.rate-ok   { color: var(--yellow); font-weight: 700; }
-.rate-bad  { color: var(--red); font-weight: 700; }
+
+/* Transaction log */
+.tx-table-wrap { overflow-y: auto; max-height: 440px; }
+.tx-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.tx-table th { text-align: left; font-size: 0.66rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 500; padding: 8px 14px; border-bottom: 1px solid var(--border); background: var(--surface2); position: sticky; top: 0; z-index: 1; }
+.tx-table th:not(:first-child):not(:nth-child(2)) { text-align: right; }
+.tx-table td { padding: 8px 14px; border-bottom: 1px solid var(--surface3); vertical-align: middle; }
+.tx-table td:not(:first-child):not(:nth-child(2)) { text-align: right; }
+.tx-table tr:last-child td { border-bottom: none; }
+.tx-row { cursor: pointer; }
+.tx-row:hover td { background: var(--surface2); }
+.tx-date { color: var(--muted); white-space: nowrap; font-size: 0.75rem; }
+.tx-matchup { font-weight: 500; }
+.tx-pick { font-weight: 600; }
+.tx-result-w { color: var(--green); font-weight: 700; font-size: 0.88rem; }
+.tx-result-l { color: var(--red);   font-weight: 700; font-size: 0.88rem; }
+.tx-result-t { color: var(--muted); font-weight: 700; font-size: 0.88rem; }
+.tx-type-badge { font-size: 0.65rem; font-weight: 600; padding: 1px 6px; border-radius: 3px; }
+.tx-type-ml { background: var(--blue-bg); color: var(--blue); border: 1px solid var(--blue-bdr); }
+.tx-type-ou { background: var(--yellow-bg); color: var(--yellow); border: 1px solid #4a3600; }
+
+/* Play detail level-2 */
+.play-detail { max-width: 640px; margin: 0 auto; }
+.play-header { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; margin-bottom: 14px; }
+.play-matchup { font-size: 1.15rem; font-weight: 700; margin-bottom: 4px; }
+.play-sub { font-size: 0.78rem; color: var(--muted); }
+.play-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+.play-stat-card { background: var(--surface2); border-radius: 7px; padding: 12px 14px; }
+.play-stat-label { font-size: 0.66rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 4px; }
+.play-stat-val { font-size: 1.05rem; font-weight: 700; }
+.play-stat-sub { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+.play-result-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; margin-bottom: 14px; }
+.play-result-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 8px; }
+.play-result-main { font-size: 1.4rem; font-weight: 700; }
+.play-result-score { font-size: 0.85rem; color: var(--muted); margin-top: 4px; }
+.play-prob-bar { margin-top: 12px; }
+
+.bt-empty { padding: 40px; text-align: center; color: var(--muted); font-size: 0.84rem; }
 
 /* ── Responsive ── */
-@media (max-width: 640px) {
+@media (max-width: 700px) {
   .games-grid { grid-template-columns: 1fr; }
-  .stats-row { grid-template-columns: repeat(2, 1fr); }
-  .pitcher-compare { grid-template-columns: 1fr; }
-  .edge-source-grid { grid-template-columns: 1fr; }
+  .pitcher-grid { grid-template-columns: 1fr; }
+  .play-grid { grid-template-columns: 1fr; }
+  .bt-records { flex-direction: column; }
 }
-
-footer { margin-top: 32px; text-align: center; font-size: 0.72rem; color: #4a5568; }
+footer { margin-top: 32px; text-align: center; font-size: 0.7rem; color: #4a5568; }
 </style>
 </head>
 <body>
+
+{# ─── Macros ─────────────────────────────────────────────────── #}
+
+{% macro conf_badge(pct) %}
+  {% if pct >= 0.70 %}
+    <span class="conf conf-HIGH">HIGH {{ "%.0f"|format(pct*100) }}%</span>
+  {% elif pct >= 0.60 %}
+    <span class="conf conf-MED">MED {{ "%.0f"|format(pct*100) }}%</span>
+  {% elif pct >= 0.55 %}
+    <span class="conf conf-LEAN">LEAN {{ "%.0f"|format(pct*100) }}%</span>
+  {% else %}
+    <span class="conf conf-PASS">{{ "%.0f"|format(pct*100) }}%</span>
+  {% endif %}
+{% endmacro %}
+
+{% macro edge_cell(edge_val, conf_pct) %}
+  {% if edge_val is not none %}
+    {% set edge_pct = edge_val * 100 %}
+    {% if edge_val >= 0.05 %}
+      <span class="edge-positive-big">{% if edge_pct > 0 %}+{% endif %}{{ "%.1f"|format(edge_pct) }}%</span>
+      {{ conf_badge(conf_pct) }}
+    {% elif edge_val >= 0.02 %}
+      <span class="edge-positive-med">{% if edge_pct > 0 %}+{% endif %}{{ "%.1f"|format(edge_pct) }}%</span>
+      {{ conf_badge(conf_pct) }}
+    {% elif edge_val <= -0.03 %}
+      <span class="edge-negative">{{ "%.1f"|format(edge_pct) }}%</span>
+    {% else %}
+      <span class="edge-neutral">{{ "%.1f"|format(edge_pct) }}%</span>
+    {% endif %}
+  {% else %}
+    <span class="odds-na">—</span>
+  {% endif %}
+{% endmacro %}
 
 {% macro batter_table(batters) %}
 {% if batters %}
 <table class="batter-table">
   <thead>
     <tr>
-      <th>#</th><th>Batter</th><th>wOBA</th><th>vs Hand</th><th>Avg EV</th><th>HH%</th><th>Pitch Mix</th><th>Match</th><th></th>
+      <th>#</th><th>Batter</th><th>wOBA</th><th>vs Hand</th><th>EV</th><th>HH%</th><th>K%</th><th>BB%</th><th>HR%</th><th>Match</th>
     </tr>
   </thead>
   <tbody>
   {% for b in batters %}
   <tr>
     <td style="color:var(--muted);">{{ loop.index }}</td>
-    <td>
-      <span class="batter-name">{{ b.name.split()[-1] if b.name else '—' }}</span>
-      <span class="hand-tag">({{ b.hand }})</span>
-    </td>
+    <td><strong>{{ b.name.split()[-1] if b.name else '—' }}</strong> <span style="color:var(--muted);font-size:.68rem;">({{ b.hand }})</span></td>
     <td>{{ "%.3f"|format(b.woba) if b.woba else "—" }}</td>
     <td>
       {% if b.woba_vs_hand and b.woba %}
-      <span class="{% if b.woba_vs_hand > b.woba * 1.05 %}favorable{% elif b.woba_vs_hand < b.woba * 0.95 %}unfavorable{% else %}neutral-val{% endif %}">
-        {{ "%.3f"|format(b.woba_vs_hand) }}
-      </span>
-      <span style="font-size:.65rem;color:var(--muted);">vs{{ b.vs_pitcher_hand }}</span>
-      {% else %}<span style="color:var(--muted);">—</span>{% endif %}
+        <span class="{% if b.woba_vs_hand > b.woba * 1.05 %}favorable{% elif b.woba_vs_hand < b.woba * 0.95 %}unfavorable{% else %}neutral-val{% endif %}">
+          {{ "%.3f"|format(b.woba_vs_hand) }}
+        </span>
+      {% else %}<span class="neutral-val">—</span>{% endif %}
     </td>
     <td>
       {% if b.avg_ev and b.avg_ev > 0 %}
-      <span class="{% if b.avg_ev >= 91 %}favorable{% elif b.avg_ev < 87 %}unfavorable{% else %}neutral-val{% endif %}">
-        {{ "%.1f"|format(b.avg_ev) }}
-      </span>
-      {% else %}<span style="color:var(--muted);">—</span>{% endif %}
+        <span class="{% if b.avg_ev >= 91 %}favorable{% elif b.avg_ev < 87 %}unfavorable{% else %}neutral-val{% endif %}">{{ "%.1f"|format(b.avg_ev) }}</span>
+      {% else %}—{% endif %}
     </td>
     <td>
       {% if b.hard_hit_rate and b.hard_hit_rate > 0 %}
-      <span class="{% if b.hard_hit_rate >= 0.43 %}favorable{% elif b.hard_hit_rate < 0.33 %}unfavorable{% else %}neutral-val{% endif %}">
-        {{ "%.0f"|format(b.hard_hit_rate * 100) }}%
-      </span>
-      {% else %}<span style="color:var(--muted);">—</span>{% endif %}
+        <span class="{% if b.hard_hit_rate >= 0.43 %}favorable{% elif b.hard_hit_rate < 0.33 %}unfavorable{% else %}neutral-val{% endif %}">{{ "%.0f"|format(b.hard_hit_rate * 100) }}%</span>
+      {% else %}—{% endif %}
     </td>
+    <td class="neutral-val">{{ "%.0f"|format(b.k_prob * 100) if b.k_prob is defined else "—" }}%</td>
+    <td class="neutral-val">{{ "%.0f"|format(b.bb_prob * 100) if b.bb_prob is defined else "—" }}%</td>
+    <td class="{% if b.hr_prob is defined and b.hr_prob >= 0.05 %}favorable{% else %}neutral-val{% endif %}">{{ "%.1f"|format(b.hr_prob * 100) if b.hr_prob is defined else "—" }}%</td>
     <td>
-      <span class="{% if b.matchup_factor > 1.05 %}favorable{% elif b.matchup_factor < 0.95 %}unfavorable{% else %}neutral-val{% endif %}">
-        {{ "%.2f"|format(b.matchup_factor) }}×
-      </span>
-    </td>
-    <td>
-      <span class="matchup-score {% if b.combined > 1.05 %}favorable{% elif b.combined < 0.95 %}unfavorable{% else %}neutral-val{% endif %}">
+      <span class="{% if b.combined > 1.05 %}favorable{% elif b.combined < 0.95 %}unfavorable{% else %}neutral-val{% endif %}">
         {{ "%.2f"|format(b.combined) }}×
       </span>
-    </td>
-    <td class="matchup-bar-cell">
-      {% set bar_pct = [[((b.combined - 0.5) / 1.3 * 100)|round|int, 0]|max, 100]|min %}
-      {% set bar_color = "#3fb950" if b.combined > 1.05 else ("#f85149" if b.combined < 0.95 else "#8b949e") %}
-      <div class="matchup-bar" style="width:{{ bar_pct }}%;background:{{ bar_color }};"></div>
     </td>
   </tr>
   {% endfor %}
   </tbody>
 </table>
-<div style="font-size:.65rem;color:var(--muted);margin-top:6px;">
-  Match = split × pitch-mix factor (geometric mean vs pitcher). EV: avg exit velo. HH%: hard-hit rate (≥95 mph). Green >1.05, red &lt;0.95.
-</div>
+<div class="lineup-score-note">Match = split × pitch-mix factor. EV = avg exit velo. HH% = hard-hit rate (≥95 mph). Green &gt;1.05×, red &lt;0.95×.</div>
 {% else %}
-<div style="font-size:.78rem;color:var(--muted);padding:8px 0;">Lineup not posted — using placeholder profiles.</div>
+<div class="neutral-val" style="font-size:.78rem;padding:6px 0;">Lineup not posted — placeholder profiles used.</div>
 {% endif %}
 {% endmacro %}
 
-<!-- ── Page header ── -->
+{# ─── Page Header ─────────────────────────────────────────────── #}
 <div class="page-header">
   <div>
     <div class="page-title">MLB Model Report</div>
@@ -261,25 +322,25 @@ footer { margin-top: 32px; text-align: center; font-size: 0.72rem; color: #4a556
   </div>
   <div class="chips">
     <span class="chip chip-total">{{ total_games }} Games</span>
-    {% if bet_count > 0  %}<span class="chip chip-bet">{{ bet_count }} BET</span>{% endif %}
+    {% if bet_count  > 0 %}<span class="chip chip-bet">{{ bet_count }} BET</span>{% endif %}
     {% if lean_count > 0 %}<span class="chip chip-lean">{{ lean_count }} LEAN</span>{% endif %}
   </div>
 </div>
 
-<!-- ── Tab bar ── -->
+{# ─── Tab Bar ─────────────────────────────────────────────────── #}
 <div class="tab-bar">
   <button class="tab-btn active" onclick="switchTab('games', this)">
     Today's Games <span class="tab-badge">{{ total_games }}</span>
   </button>
   <button class="tab-btn" onclick="switchTab('backtest', this)">
-    Backtest
+    Record &amp; History
     {% if bt %}<span class="tab-badge">{{ bt.total_games }}</span>{% endif %}
   </button>
 </div>
 
-<!-- ══════════════════════════════════════════
-     TAB: Today's Games
-     ══════════════════════════════════════════ -->
+{# ══════════════════════════════════════════════════════════════
+   TAB 1: TODAY'S GAMES
+   ══════════════════════════════════════════════════════════════ #}
 <div id="tab-games" class="tab-content active">
 <div class="games-grid">
 {% for g in games %}
@@ -289,42 +350,40 @@ footer { margin-top: 32px; text-align: center; font-size: 0.72rem; color: #4a556
 {% set det  = g.details %}
 {% set rec  = edge.recommendation %}
 {% set gid  = loop.index %}
+{% set conf_pct = [sim.home_win_pct, sim.away_win_pct] | max %}
+
 <div class="game-card {% if rec == 'BET' %}has-bet{% elif rec == 'LEAN' %}has-lean{% endif %}">
 
-  <!-- ── Card header (click to expand) ── -->
-  <div class="card-top" onclick="toggleDetail({{ gid }})">
-    <div class="matchup-row">
+  {# Card header #}
+  <div class="card-header" onclick="toggleDetail({{ gid }})">
+    <div class="card-header-row">
       <div>
-        <div class="matchup-teams">
-          <span class="team-away">{{ game.away_team }}</span>
-          <span class="team-sep">@</span>
-          <span class="team-home">{{ game.home_team }}</span>
+        <div class="matchup-label">
+          {{ game.away_team.split()[-1] }} <span style="color:var(--muted);font-weight:300;">@</span> {{ game.home_team.split()[-1] }}
         </div>
         <div class="pitcher-line">
-          {{ game.away_pitcher.name if game.away_pitcher else 'TBD' }}
-          ({{ det.away_sp.hand }}) &nbsp;vs&nbsp;
-          {{ game.home_pitcher.name if game.home_pitcher else 'TBD' }}
-          ({{ det.home_sp.hand }})
+          {{ game.away_pitcher.name if game.away_pitcher else 'TBD' }} ({{ det.away_sp.hand }})
+          &nbsp;vs&nbsp;
+          {{ game.home_pitcher.name if game.home_pitcher else 'TBD' }} ({{ det.home_sp.hand }})
         </div>
       </div>
-      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+      <div class="card-badges">
         <span class="status-tag">{{ game.status }}</span>
         <span class="badge badge-{{ rec }}">{{ rec }}</span>
       </div>
     </div>
   </div>
 
-  <!-- ── Win probability bar ── -->
-  <div class="prob-section">
-    <div class="prob-header">
+  {# Win probability bar #}
+  <div class="prob-bar-wrap">
+    <div class="prob-bar-labels">
       <span>{{ game.away_team.split()[-1] }} <span class="prob-val">{{ sim.away_win_pct | pct }}</span></span>
       {% set wind = game.wind if game.wind is defined else {} %}
       {% if wind and not wind.dome and wind.wind_speed_mph > 1 %}
-      <span style="font-size:.72rem;color:var(--muted);">
-        {% if wind.outward_wind_mph >= 2 %}🌬️{% elif wind.outward_wind_mph <= -2 %}💨{% else %}↔{% endif %}
-        {{ wind.wind_speed_mph|int }} mph {{ wind.wind_dir_label }}
-        ({% if wind.outward_wind_mph >= 0 %}+{% endif %}{{ "%.0f"|format(wind.outward_wind_mph) }} out)
-      </span>
+        <span style="font-size:.7rem;color:var(--muted);">
+          {% if wind.outward_wind_mph >= 2 %}🌬️{% elif wind.outward_wind_mph <= -2 %}💨{% else %}↔{% endif %}
+          {{ wind.wind_speed_mph|int }} mph {{ wind.wind_dir_label }}
+        </span>
       {% endif %}
       <span><span class="prob-val">{{ sim.home_win_pct | pct }}</span> {{ game.home_team.split()[-1] }}</span>
     </div>
@@ -334,95 +393,80 @@ footer { margin-top: 32px; text-align: center; font-size: 0.72rem; color: #4a556
     </div>
   </div>
 
-  <!-- ── Model odds grid ── -->
-  <div class="stats-row">
-    <div class="stat-box">
-      <div class="stat-lbl">{{ game.away_team.split()[-1] }} Model</div>
-      <div class="stat-val odds-val">{{ edge.model_fair_away_ml | american }}</div>
-      <div class="stat-sub">{{ sim.away_win_pct | pct }} implied</div>
-    </div>
-    <div class="stat-box">
-      <div class="stat-lbl">{{ game.home_team.split()[-1] }} Model</div>
-      <div class="stat-val odds-val">{{ edge.model_fair_home_ml | american }}</div>
-      <div class="stat-sub">{{ sim.home_win_pct | pct }} implied</div>
-    </div>
-    <div class="stat-box">
-      <div class="stat-lbl">Proj. Total</div>
-      <div class="stat-val">{{ sim.avg_total_runs }}</div>
-      <div class="stat-sub">{{ sim.avg_away_runs }} – {{ sim.avg_home_runs }}</div>
-    </div>
-    <div class="stat-box">
-      <div class="stat-lbl">Book O/U</div>
-      <div class="stat-val">{% if edge.book_total %}{{ edge.book_total }}{% else %}—{% endif %}</div>
-      <div class="stat-sub">
-        {% if edge.book_total %}
-          Model {% if sim.avg_total_runs > edge.book_total %}+{% endif %}{{ "%.1f"|format(sim.avg_total_runs - edge.book_total) }} vs line
-        {% else %}No line{% endif %}
-      </div>
-    </div>
+  {# Odds comparison table #}
+  <div class="odds-section">
+    {% if edge.has_odds %}
+    <table class="odds-table">
+      <thead>
+        <tr>
+          <th>Side</th>
+          <th>Model</th>
+          <th>Best Book</th>
+          <th>Edge &amp; Conf</th>
+        </tr>
+      </thead>
+      <tbody>
+        {# Away ML row #}
+        <tr>
+          <td><span class="odds-team">{{ game.away_team.split()[-1] }}</span> ML</td>
+          <td class="odds-num">{{ edge.model_fair_away_ml | american }}</td>
+          <td class="odds-num">
+            {{ edge.best_away_ml | american }}
+            <span style="font-size:.65rem;color:var(--muted);">{{ edge.best_away_book }}</span>
+          </td>
+          <td>{{ edge_cell(edge.away_edge, sim.away_win_pct) }}</td>
+        </tr>
+        {# Home ML row #}
+        <tr>
+          <td><span class="odds-team">{{ game.home_team.split()[-1] }}</span> ML</td>
+          <td class="odds-num">{{ edge.model_fair_home_ml | american }}</td>
+          <td class="odds-num">
+            {{ edge.best_home_ml | american }}
+            <span style="font-size:.65rem;color:var(--muted);">{{ edge.best_home_book }}</span>
+          </td>
+          <td>{{ edge_cell(edge.home_edge, sim.home_win_pct) }}</td>
+        </tr>
+        {# O/U rows #}
+        {% if edge.book_total is not none %}
+        <tr>
+          <td style="color:var(--muted);">Over {{ edge.book_total }}</td>
+          <td class="odds-num" style="color:var(--muted);">{{ sim.avg_total_runs }}</td>
+          <td class="odds-num">{{ edge.book_over_ml | american }}</td>
+          <td>{{ edge_cell(edge.total_edge_over, conf_pct) }}</td>
+        </tr>
+        <tr>
+          <td style="color:var(--muted);">Under {{ edge.book_total }}</td>
+          <td class="odds-num" style="color:var(--muted);">—</td>
+          <td class="odds-num">{{ edge.book_under_ml | american }}</td>
+          <td>{{ edge_cell(edge.total_edge_under, conf_pct) }}</td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+    {% else %}
+    <table class="odds-table">
+      <thead>
+        <tr><th>Side</th><th>Model ML</th><th>Model Total</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="odds-team">{{ game.away_team.split()[-1] }}</span></td>
+          <td class="odds-num">{{ edge.model_fair_away_ml | american }}</td>
+          <td rowspan="2" style="vertical-align:middle;color:var(--muted);">{{ sim.avg_total_runs }} runs proj</td>
+        </tr>
+        <tr>
+          <td><span class="odds-team">{{ game.home_team.split()[-1] }}</span></td>
+          <td class="odds-num">{{ edge.model_fair_home_ml | american }}</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="no-odds-note">No live lines — pass <code>--odds-key</code> to compare edges.</div>
+    {% endif %}
   </div>
 
-  <!-- ── Lines comparison (edge rows) ── -->
-  {% if edge.has_odds %}
-  <div class="edges-section">
-    {% if edge.away_edge is not none %}
-    <div class="edge-row {{ edge.away_edge | edge_class }}">
-      <span class="edge-lbl">
-        <span class="lines-team">{{ game.away_team.split()[-1] }}</span>
-        <span class="lines-model">Model {{ edge.model_fair_away_ml | american }}</span>
-        <span class="lines-sep">→</span>
-        <span class="lines-best">Best {{ edge.best_away_ml | american }}
-          <span style="font-size:.68rem;color:var(--muted);">({{ edge.best_away_book }})</span>
-        </span>
-      </span>
-      <span class="edge-val">{% if edge.away_edge > 0 %}+{% endif %}{{ "%.1f"|format(edge.away_edge*100) }}%</span>
-    </div>
-    {% endif %}
-    {% if edge.home_edge is not none %}
-    <div class="edge-row {{ edge.home_edge | edge_class }}">
-      <span class="edge-lbl">
-        <span class="lines-team">{{ game.home_team.split()[-1] }}</span>
-        <span class="lines-model">Model {{ edge.model_fair_home_ml | american }}</span>
-        <span class="lines-sep">→</span>
-        <span class="lines-best">Best {{ edge.best_home_ml | american }}
-          <span style="font-size:.68rem;color:var(--muted);">({{ edge.best_home_book }})</span>
-        </span>
-      </span>
-      <span class="edge-val">{% if edge.home_edge > 0 %}+{% endif %}{{ "%.1f"|format(edge.home_edge*100) }}%</span>
-    </div>
-    {% endif %}
-    {% if edge.total_edge_over is not none %}
-    <div class="edge-row {{ edge.total_edge_over | edge_class }}">
-      <span class="edge-lbl">
-        <span class="lines-team">Over {{ edge.book_total }}</span>
-        <span class="lines-model">Model {{ sim.avg_total_runs }}</span>
-        <span class="lines-sep">→</span>
-        <span class="lines-best">{{ edge.book_over_ml | american }}</span>
-      </span>
-      <span class="edge-val">{% if edge.total_edge_over > 0 %}+{% endif %}{{ "%.1f"|format(edge.total_edge_over*100) }}%</span>
-    </div>
-    <div class="edge-row {{ edge.total_edge_under | edge_class }}">
-      <span class="edge-lbl">
-        <span class="lines-team">Under {{ edge.book_total }}</span>
-        <span class="lines-model">Model {{ sim.avg_total_runs }}</span>
-        <span class="lines-sep">→</span>
-        <span class="lines-best">{{ edge.book_under_ml | american }}</span>
-      </span>
-      <span class="edge-val">{% if edge.total_edge_under > 0 %}+{% endif %}{{ "%.1f"|format(edge.total_edge_under*100) }}%</span>
-    </div>
-    {% endif %}
-  </div>
-  {% else %}
-  <div class="no-odds">
-    Model: {{ game.away_team.split()[-1] }} {{ edge.model_fair_away_ml | american }}
-    &nbsp;/&nbsp;
-    {{ game.home_team.split()[-1] }} {{ edge.model_fair_home_ml | american }}
-    &nbsp;—&nbsp;add <code>--odds-key</code> to compare against sportsbook lines.
-  </div>
-  {% endif %}
-
+  {# Most likely scores #}
   {% if sim.most_common_scores %}
-  <div class="scores-row">
+  <div style="padding:0 16px 10px;font-size:.7rem;color:var(--muted);">
     Most likely:
     {% for (h,a), cnt in sim.most_common_scores %}
       <span>{{ a }}–{{ h }} ({{ "%.1f"|format(cnt/10) }}%)</span>
@@ -430,107 +474,62 @@ footer { margin-top: 32px; text-align: center; font-size: 0.72rem; color: #4a556
   </div>
   {% endif %}
 
-  <!-- ── Expand button ── -->
+  {# Expand button #}
   <button class="expand-btn" onclick="toggleDetail({{ gid }})">
-    <span>Game Analysis</span>
+    <span>Lineup Analysis</span>
     <span class="expand-icon" id="icon-{{ gid }}">▼</span>
   </button>
 
-  <!-- ── Detail drawer ── -->
+  {# Detail drawer #}
   <div class="detail-drawer" id="detail-{{ gid }}">
 
-    <!-- Edge source summary -->
-    {% if edge.has_odds %}
+    {# Pitcher comparison #}
     <div class="detail-section">
-      <div class="detail-section-title">Edge Source</div>
-      <div class="edge-source-grid">
-        {% if edge.home_edge is not none %}
-        <div class="edge-source-card">
-          <div class="edge-source-label">{{ game.home_team }} Moneyline</div>
-          <div class="edge-source-value {% if edge.home_edge >= 0.05 %}favorable{% elif edge.home_edge >= 0.02 %}neutral-val{% else %}unfavorable{% endif %}">
-            {% if edge.home_edge > 0 %}+{% endif %}{{ "%.1f"|format(edge.home_edge*100) }}%
-          </div>
-          <div class="edge-source-sub">Model {{ sim.home_win_pct|pct }} vs Book {{ edge.book_home_ml | american }}</div>
-        </div>
-        {% endif %}
-        {% if edge.away_edge is not none %}
-        <div class="edge-source-card">
-          <div class="edge-source-label">{{ game.away_team }} Moneyline</div>
-          <div class="edge-source-value {% if edge.away_edge >= 0.05 %}favorable{% elif edge.away_edge >= 0.02 %}neutral-val{% else %}unfavorable{% endif %}">
-            {% if edge.away_edge > 0 %}+{% endif %}{{ "%.1f"|format(edge.away_edge*100) }}%
-          </div>
-          <div class="edge-source-sub">Model {{ sim.away_win_pct|pct }} vs Book {{ edge.book_away_ml | american }}</div>
-        </div>
-        {% endif %}
-        {% if edge.total_edge_over is not none %}
-        <div class="edge-source-card">
-          <div class="edge-source-label">Over {{ edge.book_total }}</div>
-          <div class="edge-source-value {% if edge.total_edge_over >= 0.05 %}favorable{% elif edge.total_edge_over >= 0.02 %}neutral-val{% else %}unfavorable{% endif %}">
-            {% if edge.total_edge_over > 0 %}+{% endif %}{{ "%.1f"|format(edge.total_edge_over*100) }}%
-          </div>
-          <div class="edge-source-sub">Model total: {{ sim.avg_total_runs }} vs book: {{ edge.book_total }}</div>
-        </div>
-        <div class="edge-source-card">
-          <div class="edge-source-label">Under {{ edge.book_total }}</div>
-          <div class="edge-source-value {% if edge.total_edge_under >= 0.05 %}favorable{% elif edge.total_edge_under >= 0.02 %}neutral-val{% else %}unfavorable{% endif %}">
-            {% if edge.total_edge_under > 0 %}+{% endif %}{{ "%.1f"|format(edge.total_edge_under*100) }}%
-          </div>
-          <div class="edge-source-sub">Model total: {{ sim.avg_total_runs }} vs book: {{ edge.book_total }}</div>
-        </div>
-        {% endif %}
-      </div>
-    </div>
-    {% endif %}
-
-    <!-- Starting pitcher comparison -->
-    <div class="detail-section">
-      <div class="detail-section-title">Starting Pitchers</div>
-      <div class="pitcher-compare">
-
+      <div class="section-title">Starting Pitchers</div>
+      <div class="pitcher-grid">
         {% for sp, team_label in [(det.away_sp, game.away_team), (det.home_sp, game.home_team)] %}
         <div class="pitcher-card">
           <div class="pitcher-name">
             {{ sp.name }}
-            <span class="pitcher-hand-tag">{{ sp.hand }}HP</span>
-            <span style="font-size:.72rem;color:var(--muted);font-weight:400;margin-left:4px;">{{ team_label }}</span>
+            <span class="hand-pill">{{ sp.hand }}HP</span>
+            <span style="font-size:.7rem;color:var(--muted);">{{ team_label.split()[-1] }}</span>
           </div>
           <div class="pitcher-stats">
-            <div class="p-stat">
-              <div class="p-stat-val {% if sp.era < 3.50 %}favorable{% elif sp.era > 5.00 %}unfavorable{% endif %}">{{ "%.2f"|format(sp.era) }}</div>
+            <div>
+              <div class="p-stat-val {% if sp.era < 3.50 %}good{% elif sp.era > 5.00 %}bad{% endif %}">{{ "%.2f"|format(sp.era) }}</div>
               <div class="p-stat-lbl">ERA</div>
             </div>
-            <div class="p-stat">
-              <div class="p-stat-val {% if sp.fip < 3.50 %}favorable{% elif sp.fip > 5.00 %}unfavorable{% endif %}">{{ "%.2f"|format(sp.fip) }}</div>
+            <div>
+              <div class="p-stat-val {% if sp.fip < 3.50 %}good{% elif sp.fip > 5.00 %}bad{% endif %}">{{ "%.2f"|format(sp.fip) }}</div>
               <div class="p-stat-lbl">FIP</div>
             </div>
-            <div class="p-stat">
-              <div class="p-stat-val {% if sp.whip < 1.20 %}favorable{% elif sp.whip > 1.50 %}unfavorable{% endif %}">{{ "%.2f"|format(sp.whip) }}</div>
+            <div>
+              <div class="p-stat-val {% if sp.whip < 1.20 %}good{% elif sp.whip > 1.50 %}bad{% endif %}">{{ "%.2f"|format(sp.whip) }}</div>
               <div class="p-stat-lbl">WHIP</div>
             </div>
             {% if sp.avg_ev_allowed and sp.avg_ev_allowed > 0 %}
-            <div class="p-stat">
-              <div class="p-stat-val {% if sp.avg_ev_allowed < 87 %}favorable{% elif sp.avg_ev_allowed > 91 %}unfavorable{% endif %}">{{ "%.1f"|format(sp.avg_ev_allowed) }}</div>
+            <div>
+              <div class="p-stat-val {% if sp.avg_ev_allowed < 87 %}good{% elif sp.avg_ev_allowed > 91 %}bad{% endif %}">{{ "%.1f"|format(sp.avg_ev_allowed) }}</div>
               <div class="p-stat-lbl">Avg EV</div>
             </div>
-            <div class="p-stat">
-              <div class="p-stat-val {% if sp.hard_hit_allowed_rate < 0.33 %}favorable{% elif sp.hard_hit_allowed_rate > 0.42 %}unfavorable{% endif %}">{{ "%.0f"|format(sp.hard_hit_allowed_rate * 100) }}%</div>
+            <div>
+              <div class="p-stat-val {% if sp.hard_hit_allowed_rate < 0.33 %}good{% elif sp.hard_hit_allowed_rate > 0.42 %}bad{% endif %}">{{ "%.0f"|format(sp.hard_hit_allowed_rate * 100) }}%</div>
               <div class="p-stat-lbl">Hard Hit%</div>
             </div>
             {% if sp.woba_allowed %}
-            <div class="p-stat">
-              <div class="p-stat-val {% if sp.woba_allowed < 0.290 %}favorable{% elif sp.woba_allowed > 0.340 %}unfavorable{% endif %}">{{ "%.3f"|format(sp.woba_allowed) }}</div>
+            <div>
+              <div class="p-stat-val {% if sp.woba_allowed < 0.290 %}good{% elif sp.woba_allowed > 0.340 %}bad{% endif %}">{{ "%.3f"|format(sp.woba_allowed) }}</div>
               <div class="p-stat-lbl">wOBA All.</div>
             </div>
             {% endif %}
             {% endif %}
           </div>
           {% if sp.top_pitches %}
-          <div class="pitch-mix-title">Pitch Mix</div>
           <div class="pitch-bars">
             {% for p in sp.top_pitches %}
             <div class="pitch-bar-row">
-              <span class="pitch-type-tag">{{ p.type }}</span>
-              <div class="pitch-bar-wrap">
+              <span class="pitch-type">{{ p.type }}</span>
+              <div class="pitch-bar-track">
                 <div class="pitch-bar-fill" style="width:{{ p.pct }}%"></div>
               </div>
               <span class="pitch-pct">{{ p.pct }}%</span>
@@ -540,275 +539,503 @@ footer { margin-top: 32px; text-align: center; font-size: 0.72rem; color: #4a556
           {% endif %}
         </div>
         {% endfor %}
-
       </div>
     </div>
 
-    <!-- Lineup matchup — away bats vs home SP -->
+    {# Away lineup vs home SP #}
     <div class="detail-section">
-      <div class="detail-section-title">
+      <div class="section-title">
         {{ game.away_team }} Lineup vs {{ det.home_sp.name }}
-        <span style="font-size:.7rem;color:var(--muted);font-weight:400;margin-left:6px;">
-          Lineup score: <span class="{% if det.away_lineup_score > 1.05 %}favorable{% elif det.away_lineup_score < 0.95 %}unfavorable{% else %}neutral-val{% endif %}">{{ "%.2f"|format(det.away_lineup_score) }}</span>
+        <span style="font-weight:400;margin-left:8px;">
+          Lineup score:
+          <span class="{% if det.away_lineup_score > 1.05 %}favorable{% elif det.away_lineup_score < 0.95 %}unfavorable{% else %}neutral-val{% endif %}">
+            {{ "%.2f"|format(det.away_lineup_score) }}×
+          </span>
         </span>
       </div>
       {{ batter_table(det.away_batters) }}
     </div>
 
-    <!-- Lineup matchup — home bats vs away SP -->
+    {# Home lineup vs away SP #}
     <div class="detail-section">
-      <div class="detail-section-title">
+      <div class="section-title">
         {{ game.home_team }} Lineup vs {{ det.away_sp.name }}
-        <span style="font-size:.7rem;color:var(--muted);font-weight:400;margin-left:6px;">
-          Lineup score: <span class="{% if det.home_lineup_score > 1.05 %}favorable{% elif det.home_lineup_score < 0.95 %}unfavorable{% else %}neutral-val{% endif %}">{{ "%.2f"|format(det.home_lineup_score) }}</span>
+        <span style="font-weight:400;margin-left:8px;">
+          Lineup score:
+          <span class="{% if det.home_lineup_score > 1.05 %}favorable{% elif det.home_lineup_score < 0.95 %}unfavorable{% else %}neutral-val{% endif %}">
+            {{ "%.2f"|format(det.home_lineup_score) }}×
+          </span>
         </span>
       </div>
       {{ batter_table(det.home_batters) }}
     </div>
 
-  </div><!-- /detail-drawer -->
-</div><!-- /game-card -->
+  </div>{# /detail-drawer #}
+</div>{# /game-card #}
 {% endfor %}
-</div><!-- /games-grid -->
-</div><!-- /tab-games -->
+</div>{# /games-grid #}
+</div>{# /tab-games #}
 
-<!-- ══════════════════════════════════════════
-     TAB: Backtest
-     ══════════════════════════════════════════ -->
+{# ══════════════════════════════════════════════════════════════
+   TAB 2: RECORD & HISTORY
+   ══════════════════════════════════════════════════════════════ #}
 <div id="tab-backtest" class="tab-content">
-{% if bt %}
-
-<!-- KPI summary row -->
-<div class="bt-summary">
-  <div class="bt-kpi">
-    <div class="bt-kpi-val">{{ bt.total_games }}</div>
-    <div class="bt-kpi-lbl">Games Tracked</div>
-  </div>
-  <div class="bt-kpi">
-    <div class="bt-kpi-val {% if bt.ml_rate >= 0.55 %}rate-good{% elif bt.ml_rate >= 0.50 %}rate-ok{% else %}rate-bad{% endif %}">
-      {{ "%.1f"|format(bt.ml_rate * 100) }}%
-    </div>
-    <div class="bt-kpi-lbl">ML Accuracy</div>
-  </div>
-  <div class="bt-kpi">
-    <div class="bt-kpi-val">{{ bt.ml_correct }}</div>
-    <div class="bt-kpi-lbl">Correct Picks</div>
-  </div>
-  {% if bt.ou_stats %}
-  <div class="bt-kpi">
-    <div class="bt-kpi-val {% if bt.ou_stats.rate >= 0.55 %}rate-good{% elif bt.ou_stats.rate >= 0.50 %}rate-ok{% else %}rate-bad{% endif %}">
-      {{ "%.1f"|format(bt.ou_stats.rate * 100) }}%
-    </div>
-    <div class="bt-kpi-lbl">O/U Accuracy</div>
-  </div>
-  {% endif %}
-  <div class="bt-kpi">
-    <div class="bt-kpi-val" style="font-size:1rem;padding-top:4px;">{{ bt.date_range }}</div>
-    <div class="bt-kpi-lbl">Season Coverage</div>
-  </div>
+  {# Embed full backtest log as JSON for JS drill-down #}
+  <script>
+  const BT_RAW = {{ bt_log | tojson | safe }};
+  </script>
+  <div id="bt-root"></div>
 </div>
 
-<!-- By model confidence -->
-<div class="bt-section">
-  <div class="bt-section-hdr">ML Hit Rate by Model Confidence</div>
-  <table class="bt-table">
-    <thead><tr>
-      <th>Confidence</th><th>Games</th><th>Correct</th><th>Hit %</th><th></th>
-    </tr></thead>
-    <tbody>
-    {% for tier, stats in bt.by_confidence.items() %}
-    <tr>
-      <td><strong>{{ tier }}</strong></td>
-      <td>{{ stats.games }}</td>
-      <td>{{ stats.hits }}</td>
-      <td class="{% if stats.rate >= 0.60 %}rate-good{% elif stats.rate >= 0.52 %}rate-ok{% else %}rate-bad{% endif %}">
-        {{ "%.1f"|format(stats.rate * 100) }}%
-      </td>
-      <td>
-        <div class="bt-hit-bar-wrap">
-          <div class="bt-hit-bar" style="width:{{ (stats.rate*100)|round|int }}%;background:{% if stats.rate >= 0.60 %}var(--green){% elif stats.rate >= 0.52 %}var(--yellow){% else %}var(--red){% endif %};"></div>
-        </div>
-      </td>
-    </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-</div>
-
-<!-- By confidence classification -->
-<div class="bt-section">
-  <div class="bt-section-hdr">ML Hit Rate by Model Confidence</div>
-  <table class="bt-table">
-    <thead><tr>
-      <th>Confidence Level</th><th>Games</th><th>Correct</th><th>Hit %</th><th></th>
-    </tr></thead>
-    <tbody>
-    {% for rec, stats in bt.by_recommendation.items() %}
-    <tr>
-      <td><strong>{{ rec }}</strong></td>
-      <td>{{ stats.games }}</td>
-      <td>{{ stats.hits }}</td>
-      <td class="{% if stats.rate >= 0.60 %}rate-good{% elif stats.rate >= 0.52 %}rate-ok{% else %}rate-bad{% endif %}">
-        {{ "%.1f"|format(stats.rate * 100) }}%
-      </td>
-      <td>
-        <div class="bt-hit-bar-wrap">
-          <div class="bt-hit-bar" style="width:{{ (stats.rate*100)|round|int }}%;background:{% if stats.rate >= 0.60 %}var(--green){% elif stats.rate >= 0.52 %}var(--yellow){% else %}var(--red){% endif %};"></div>
-        </div>
-      </td>
-    </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-</div>
-
-<!-- By edge range (only shown when bet_results data exists) -->
-{% if bt.by_edge %}
-<div class="bt-section">
-  <div class="bt-section-hdr">Bet Hit Rate by Edge Range (sportsbook lines required)</div>
-  <table class="bt-table">
-    <thead><tr>
-      <th>Edge Range</th><th>Bets</th><th>Won</th><th>Hit %</th><th></th>
-    </tr></thead>
-    <tbody>
-    {% for range_lbl, stats in bt.by_edge.items() %}
-    <tr>
-      <td><strong>{{ range_lbl }}</strong></td>
-      <td>{{ stats.bets }}</td>
-      <td>{{ stats.hits }}</td>
-      <td class="{% if stats.rate >= 0.60 %}rate-good{% elif stats.rate >= 0.52 %}rate-ok{% else %}rate-bad{% endif %}">
-        {{ "%.1f"|format(stats.rate * 100) }}%
-      </td>
-      <td>
-        <div class="bt-hit-bar-wrap">
-          <div class="bt-hit-bar" style="width:{{ (stats.rate*100)|round|int }}%;background:{% if stats.rate >= 0.60 %}var(--green){% elif stats.rate >= 0.52 %}var(--yellow){% else %}var(--red){% endif %};"></div>
-        </div>
-      </td>
-    </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-</div>
-{% else %}
-<div class="bt-section">
-  <div class="bt-section-hdr">Bet Hit Rate by Edge Range</div>
-  <div class="bt-no-data">
-    Edge-range data accumulates when the model is run with live sportsbook odds before game time.<br>
-    Run <code>python3 main.py --date YYYY-MM-DD</code> on game days to build this history.
-  </div>
-</div>
-{% endif %}
-
-{% if bt.ou_stats %}
-<!-- O/U accuracy -->
-<div class="bt-section">
-  <div class="bt-section-hdr">Over / Under Direction Accuracy</div>
-  <table class="bt-table">
-    <thead><tr>
-      <th>Market</th><th>Games</th><th>Correct</th><th>Hit %</th><th></th>
-    </tr></thead>
-    <tbody>
-    <tr>
-      <td><strong>O/U Direction</strong></td>
-      <td>{{ bt.ou_stats.games }}</td>
-      <td>{{ bt.ou_stats.hits }}</td>
-      <td class="{% if bt.ou_stats.rate >= 0.55 %}rate-good{% elif bt.ou_stats.rate >= 0.50 %}rate-ok{% else %}rate-bad{% endif %}">
-        {{ "%.1f"|format(bt.ou_stats.rate * 100) }}%
-      </td>
-      <td>
-        <div class="bt-hit-bar-wrap">
-          <div class="bt-hit-bar" style="width:{{ (bt.ou_stats.rate*100)|round|int }}%;background:{% if bt.ou_stats.rate >= 0.55 %}var(--green){% elif bt.ou_stats.rate >= 0.50 %}var(--yellow){% else %}var(--red){% endif %};"></div>
-        </div>
-      </td>
-    </tr>
-    </tbody>
-  </table>
-</div>
-{% endif %}
-
-<div style="font-size:.72rem;color:var(--muted);margin-top:8px;">
-  Last updated {{ bt.last_updated }} · Run <code>python3 agents/backtest_agent.py</code> to refresh
-</div>
-
-{% endif %}
-
-<!-- ── Scrollable Game Log ── -->
-{% if bt_log %}
-<div class="bt-section" style="margin-top:{% if bt %}16px{% else %}60px{% endif %};">
-  <div class="bt-section-hdr" style="display:flex;align-items:center;justify-content:space-between;">
-    <span>Game-by-Game Log</span>
-    <span style="font-weight:400;color:var(--muted);">{{ bt_log|length }} games</span>
-  </div>
-  <div style="max-height:480px;overflow-y:auto;">
-    <table class="bt-table" style="font-size:0.78rem;">
-      <thead style="position:sticky;top:0;background:var(--surface2);z-index:1;">
-        <tr>
-          <th>Date</th>
-          <th>Matchup</th>
-          <th>Model Pick</th>
-          <th>Result</th>
-          <th>Conf</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-      {% for r in bt_log %}
-      {% set model_picks_home = r.home_win_pct >= r.away_win_pct %}
-      {% set pick_team = r.home_team if model_picks_home else r.away_team %}
-      {% set actual = r.home_score|string + '–' + r.away_score|string %}
-      <tr>
-        <td style="white-space:nowrap;color:var(--muted);">{{ r.date[5:] }}</td>
-        <td style="white-space:nowrap;">
-          <span style="color:var(--muted);">{{ r.away_team.split()[-1] }}</span>
-          <span style="color:var(--muted);margin:0 3px;">@</span>
-          <span>{{ r.home_team.split()[-1] }}</span>
-        </td>
-        <td style="font-weight:600;">{{ pick_team.split()[-1] }}</td>
-        <td style="white-space:nowrap;color:var(--muted);">
-          <span class="{% if r.home_won %}favorable{% else %}unfavorable{% endif %}" style="font-weight:600;font-size:0.72rem;">
-            {{ r.home_team.split()[-1] if r.home_won else r.away_team.split()[-1] }}
-          </span>
-          {{ actual }}
-        </td>
-        <td style="color:var(--muted);font-size:0.72rem;">{{ "%.0f"|format(r.confidence * 100) }}%</td>
-        <td>
-          {% if r.model_correct_ml %}
-          <span style="color:var(--green);font-weight:700;font-size:0.8rem;">✓</span>
-          {% else %}
-          <span style="color:var(--red);font-weight:700;font-size:0.8rem;">✗</span>
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-{% else %}
-<div class="bt-no-data" style="margin-top:{% if not bt %}60px{% else %}0{% endif %};">
-  <div style="font-size:1.1rem;margin-bottom:8px;">No backtest data yet</div>
-  Run <code>python3 agents/backtest_agent.py</code> to process this season's completed games.
-</div>
-{% endif %}
-
-</div><!-- /tab-backtest -->
-
-<footer>MLB Predictive Model · For informational purposes only · Not financial advice</footer>
+<footer>MLB Predictive Model &nbsp;·&nbsp; For informational purposes only &nbsp;·&nbsp; Not financial advice</footer>
 
 <script>
-function toggleDetail(id) {
-  const drawer = document.getElementById('detail-' + id);
-  const icon   = document.getElementById('icon-'   + id);
-  const isOpen = drawer.classList.contains('open');
-  drawer.classList.toggle('open', !isOpen);
-  icon.classList.toggle('open', !isOpen);
-}
-
+/* ── Tab switching ── */
 function switchTab(name, btn) {
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
   if (btn) btn.classList.add('active');
+  if (name === 'backtest') renderBt();
+}
+
+/* ── Game card expand ── */
+function toggleDetail(id) {
+  const drawer = document.getElementById('detail-' + id);
+  const icon   = document.getElementById('icon-' + id);
+  const open   = drawer.classList.toggle('open');
+  icon.classList.toggle('open', open);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   BACKTEST ENGINE
+   ══════════════════════════════════════════════════════════════ */
+
+let btState = { level: 0, tier: null, txIdx: null, prevLevel: 0 };
+
+/* ── Helpers ── */
+function fmtDate(iso) {
+  const p = iso.split('-');
+  return p[1] + '/' + p[2];
+}
+function probToAmerican(p) {
+  if (p <= 0 || p >= 1) return 0;
+  return p >= 0.5 ? Math.round(-(p / (1 - p)) * 100) : Math.round(((1 - p) / p) * 100);
+}
+function fmtAmerican(ml) {
+  if (!ml && ml !== 0) return 'N/A';
+  return ml > 0 ? '+' + ml : '' + ml;
+}
+function fmtEdge(e) {
+  if (e == null) return '—';
+  const s = (e * 100).toFixed(1);
+  return e > 0 ? '+' + s + '%' : s + '%';
+}
+function rateClass(r) {
+  return r >= 0.55 ? 'rate-good' : r >= 0.50 ? 'rate-ok' : 'rate-bad';
+}
+function confLabel(rec) {
+  const map = { HIGH: 'HIGH (70%+)', MED: 'MED (60-70%)', LEAN: 'LEAN (55-60%)', PASS: 'PASS (<55%)' };
+  return map[rec] || rec;
+}
+function confBadgeHtml(rec, pct) {
+  const label = rec + ' ' + (pct * 100).toFixed(0) + '%';
+  return `<span class="conf conf-${rec}">${label}</span>`;
+}
+/* ── O/U helpers ── */
+function getOuBets(r) {
+  return (r.bet_results || []).filter(b => b.type === 'OU' || b.side === 'over' || b.side === 'under');
+}
+function ouResult(bet) {
+  if (!bet) return null;
+  if (bet.push) return 'T';
+  if (bet.won === true) return 'W';
+  if (bet.won === false) return 'L';
+  return null;
+}
+function ouPickLabel(r) {
+  if (r.ou_pick) return r.ou_pick + ' ' + r.book_total;
+  const bet = getOuBets(r)[0];
+  if (!bet) return r.book_total ? (r.model_total > r.book_total ? 'Over ' + r.book_total : 'Under ' + r.book_total) : '—';
+  return (bet.side === 'over' ? 'Over ' : 'Under ') + r.book_total;
+}
+
+/* ── Data subsets ── */
+function getMlPlays(tier) {
+  const base = BT_RAW.filter(r => r.confidence_rec !== 'PASS');
+  return tier ? base.filter(r => r.confidence_rec === tier) : base;
+}
+function getOuPlays(tier) {
+  // Only include games where we actually identified an O/U edge (bet_results has an OU entry)
+  const base = BT_RAW.filter(r => getOuBets(r).length > 0);
+  if (!tier) return base;
+  // Tier for O/U is based on the bet rec (BET/LEAN), not ML confidence
+  return base.filter(r => getOuBets(r).some(b => b.rec === tier));
+}
+
+function mlRecord(plays) {
+  const w = plays.filter(r => r.model_correct_ml).length;
+  return { w, l: plays.length - w, n: plays.length };
+}
+function ouRecord(plays) {
+  let w = 0, l = 0, t = 0;
+  plays.forEach(r => {
+    getOuBets(r).forEach(bet => {
+      const res = ouResult(bet);
+      if (res === 'W') w++;
+      else if (res === 'L') l++;
+      else if (res === 'T') t++;
+    });
+  });
+  return { w, l, t, n: w + l + t };
+}
+
+/* ── Tier breakdown rows ── */
+const TIERS = ['HIGH', 'MED', 'LEAN'];
+
+function tierTableHtml(mlPlaysAll) {
+  let rows = '';
+  TIERS.forEach(tier => {
+    const plays = mlPlaysAll.filter(r => r.confidence_rec === tier);
+    if (!plays.length) return;
+    const rec = mlRecord(plays);
+    const pct = rec.n > 0 ? rec.w / rec.n : 0;
+    const barW = Math.round(pct * 100);
+    const cls  = rateClass(pct);
+    rows += `
+      <tr class="bt-tier-row" onclick="drillTier('${tier}')">
+        <td class="tier-label"><span class="conf conf-${tier}">${confLabel(tier)}</span></td>
+        <td>${rec.n}</td>
+        <td>${rec.w} – ${rec.l}</td>
+        <td>
+          <span class="${cls}">${(pct * 100).toFixed(1)}%</span>
+          <span class="bt-hit-bar-wrap">
+            <div class="bt-hit-bar" style="width:${barW}%;background:${pct>=0.55?'var(--green)':pct>=0.50?'var(--yellow)':'var(--red)'};"></div>
+          </span>
+        </td>
+        <td style="color:var(--muted);font-size:.8rem;">›</td>
+      </tr>`;
+  });
+  return rows;
+}
+
+/* ── Transaction table ── */
+function txTableHtml(mlPlays, ouPlays, fromTier) {
+  // Merge ML + O/U plays into one sorted list
+  const rows = [];
+  mlPlays.forEach((r, i) => {
+    const modelPick = r.home_win_pct >= r.away_win_pct ? r.home_team : r.away_team;
+    const pickShort = modelPick.split(' ').slice(-1)[0];
+    const homeML = probToAmerican(r.home_win_pct);
+    const awayML = probToAmerican(r.away_win_pct);
+    const pickedML = r.home_win_pct >= r.away_win_pct ? homeML : awayML;
+    // Edge from bet_results if available
+    const bet = (r.bet_results || []).find(b => b.side === (r.home_win_pct >= r.away_win_pct ? 'home' : 'away'));
+    const edge = bet ? bet.edge : null;
+    rows.push({
+      date: r.date, idx: BT_RAW.indexOf(r),
+      matchup: r.away_team.split(' ').slice(-1)[0] + ' @ ' + r.home_team.split(' ').slice(-1)[0],
+      type: 'ML', pick: pickShort + ' ML',
+      modelOdds: fmtAmerican(pickedML),
+      edge: fmtEdge(edge),
+      conf: confBadgeHtml(r.confidence_rec, r.confidence),
+      result: r.model_correct_ml ? 'W' : 'L',
+      resultCls: r.model_correct_ml ? 'tx-result-w' : 'tx-result-l',
+    });
+  });
+  ouPlays.forEach(r => {
+    getOuBets(r).forEach(bet => {
+      const res = ouResult(bet);
+      if (res == null) return;
+      rows.push({
+        date: r.date, idx: BT_RAW.indexOf(r),
+        matchup: r.away_team.split(' ').slice(-1)[0] + ' @ ' + r.home_team.split(' ').slice(-1)[0],
+        type: 'O/U', pick: ouPickLabel(r),
+        modelOdds: r.model_total.toFixed(1),
+        edge: fmtEdge(bet.edge != null ? bet.edge : (r.ou_edge || null)),
+        conf: `<span class="conf conf-${bet.rec || 'PASS'}">${bet.rec || 'LEAN'}</span>`,
+        result: res,
+        resultCls: res === 'W' ? 'tx-result-w' : res === 'L' ? 'tx-result-l' : 'tx-result-t',
+      });
+    });
+  });
+  rows.sort((a, b) => b.date.localeCompare(a.date));
+
+  if (!rows.length) return `<div class="bt-empty">No ${fromTier ? confLabel(fromTier) + ' ' : ''}plays on record.</div>`;
+
+  let html = `
+    <div class="tx-table-wrap">
+    <table class="tx-table">
+      <thead><tr>
+        <th>Date</th><th>Matchup</th><th>Type</th><th>Pick</th><th>Model</th><th>Edge</th><th>Conf</th><th>Result</th>
+      </tr></thead>
+      <tbody>`;
+  rows.forEach(r => {
+    html += `
+      <tr class="tx-row" onclick="drillTx(${r.idx})">
+        <td class="tx-date">${fmtDate(r.date)}</td>
+        <td class="tx-matchup">${r.matchup}</td>
+        <td><span class="tx-type-badge tx-type-${r.type === 'ML' ? 'ml' : 'ou'}">${r.type}</span></td>
+        <td class="tx-pick">${r.pick}</td>
+        <td style="color:var(--muted);font-size:.78rem;">${r.modelOdds}</td>
+        <td style="font-size:.78rem;">${r.edge}</td>
+        <td>${r.conf}</td>
+        <td class="${r.resultCls}">${r.result === 'W' ? '✓ W' : r.result === 'L' ? '✗ L' : '— T'}</td>
+      </tr>`;
+  });
+  html += '</tbody></table></div>';
+  return html;
+}
+
+/* ── Level 0: Summary ── */
+function ouEdgeTableHtml() {
+  const OU_BUCKETS = [
+    { label: 'LEAN (2–5%)', lo: 0.02, hi: 0.05 },
+    { label: 'BET (5%+)',   lo: 0.05, hi: 1.00 },
+  ];
+  let rows = '';
+  OU_BUCKETS.forEach(b => {
+    const plays = BT_RAW.filter(r =>
+      getOuBets(r).some(bet => bet.edge >= b.lo && bet.edge < b.hi)
+    );
+    if (!plays.length) return;
+    let w = 0, l = 0, t = 0;
+    plays.forEach(r => {
+      getOuBets(r).filter(bet => bet.edge >= b.lo && bet.edge < b.hi).forEach(bet => {
+        const res = ouResult(bet);
+        if (res === 'W') w++; else if (res === 'L') l++; else if (res === 'T') t++;
+      });
+    });
+    const n = w + l + t;
+    const pct = (w + l) > 0 ? w / (w + l) : 0;
+    const cls = rateClass(pct);
+    rows += `
+      <tr>
+        <td class="tier-label">${b.label}</td>
+        <td>${n}</td>
+        <td>${w} – ${l}${t ? ' – ' + t : ''}</td>
+        <td><span class="${cls}">${((w+l)>0?(pct*100).toFixed(1):'—')}%</span></td>
+      </tr>`;
+  });
+  if (!rows) return '<div class="bt-empty" style="padding:16px;">No O/U edge plays tracked yet — run a backtest refresh after updating odds.</div>';
+  return `<table class="bt-tier-table"><thead><tr><th>Edge Range</th><th>Bets</th><th>W – L – T</th><th>Win %</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function renderLevel0() {
+  const mlPlays = getMlPlays(null);
+  const ouPlays = getOuPlays(null);
+  const ml = mlRecord(mlPlays);
+  const ou = ouRecord(ouPlays);
+  const mlRate = ml.n > 0 ? ml.w / ml.n : 0;
+  const ouRate = ou.n > 0 ? ou.w / (ou.w + ou.l) : 0;
+
+  let html = `
+    <div class="bt-records">
+      <div class="bt-record-card">
+        <div class="bt-record-type">ML Picks Record</div>
+        <div class="bt-record-wl ${rateClass(mlRate)}">${ml.w}–${ml.l}</div>
+        <div class="bt-record-sub">${ml.n} picks &nbsp;·&nbsp; <span class="${rateClass(mlRate)}">${(mlRate*100).toFixed(1)}%</span></div>
+      </div>
+      <div class="bt-record-card">
+        <div class="bt-record-type">Over / Under Record</div>
+        <div class="bt-record-wl ${rateClass(ouRate)}">${ou.w}–${ou.l}${ou.t ? '–'+ou.t : ''}</div>
+        <div class="bt-record-sub">${ou.n} bets &nbsp;·&nbsp; <span class="${rateClass(ouRate)}">${(ou.w+ou.l)>0?(ouRate*100).toFixed(1)+'%':'No data'}</span></div>
+      </div>
+    </div>
+    <div class="bt-section">
+      <div class="bt-section-hdr">ML Hit Rate by Confidence — click a tier to drill down</div>
+      <table class="bt-tier-table">
+        <thead><tr><th>Tier</th><th>Plays</th><th>W – L</th><th>Win %</th><th></th></tr></thead>
+        <tbody>${tierTableHtml(mlPlays)}</tbody>
+      </table>
+    </div>
+    <div class="bt-section">
+      <div class="bt-section-hdr">O/U Edge Plays by Range</div>
+      ${ouEdgeTableHtml()}
+    </div>
+    <div class="bt-section">
+      <div class="bt-section-hdr">All Edge Plays — click a row for details</div>
+      ${txTableHtml(mlPlays, ouPlays, null)}
+    </div>`;
+
+  document.getElementById('bt-root').innerHTML = html;
+}
+
+/* ── Level 1: Tier detail ── */
+function renderLevel1(tier) {
+  const mlPlays = getMlPlays(tier);
+  const ouPlays = getOuPlays(tier);
+  const ml = mlRecord(mlPlays);
+  const ou = ouRecord(ouPlays);
+  const mlRate = ml.n > 0 ? ml.w / ml.n : 0;
+  const ouRate = ou.n > 0 ? ou.w / ou.n : 0;
+
+  let html = `
+    <div class="bt-nav">
+      <button class="bt-back-btn" onclick="backTo(0)">← All Tiers</button>
+      <span class="bt-breadcrumb">Record</span>
+      <span style="color:var(--muted);">/</span>
+      <span class="bt-breadcrumb-cur">${confLabel(tier)}</span>
+    </div>
+    <div class="bt-records">
+      <div class="bt-record-card">
+        <div class="bt-record-type">${confLabel(tier)} ML Record</div>
+        <div class="bt-record-wl ${rateClass(mlRate)}">${ml.w}–${ml.l}</div>
+        <div class="bt-record-sub">${ml.n} picks &nbsp;·&nbsp; <span class="${rateClass(mlRate)}">${(mlRate*100).toFixed(1)}%</span></div>
+      </div>
+      ${ou.n > 0 ? `
+      <div class="bt-record-card">
+        <div class="bt-record-type">${confLabel(tier)} O/U Record</div>
+        <div class="bt-record-wl ${rateClass(ouRate)}">${ou.w}–${ou.l}${ou.t ? '–' + ou.t : ''}</div>
+        <div class="bt-record-sub">${ou.n} calls &nbsp;·&nbsp; <span class="${rateClass(ouRate)}">${(ouRate*100).toFixed(1)}%</span></div>
+      </div>` : ''}
+    </div>
+    <div class="bt-section">
+      <div class="bt-section-hdr">${confLabel(tier)} Plays — click a row for details</div>
+      ${txTableHtml(mlPlays, ouPlays, tier)}
+    </div>`;
+
+  document.getElementById('bt-root').innerHTML = html;
+}
+
+/* ── Level 2: Play detail ── */
+function renderLevel2(idx) {
+  const r = BT_RAW[idx];
+  if (!r) return;
+
+  const modelPick = r.home_win_pct >= r.away_win_pct ? r.home_team : r.away_team;
+  const homeML = probToAmerican(r.home_win_pct);
+  const awayML = probToAmerican(r.away_win_pct);
+  const correct = r.model_correct_ml;
+  const winner  = r.home_won ? r.home_team : r.away_team;
+  const loser   = r.home_won ? r.away_team : r.home_team;
+
+  // ML bet result for our pick
+  const pickedSide = r.home_win_pct >= r.away_win_pct ? 'home' : 'away';
+  const mlBet = (r.bet_results || []).find(b => (b.type === 'ML' || (!b.type && (b.side === 'home' || b.side === 'away'))) && b.side === pickedSide);
+  const edge = mlBet ? mlBet.edge : null;
+  const ouBetsForPlay = getOuBets(r);
+
+  const backLabel = btState.tier ? confLabel(btState.tier) : 'All Plays';
+
+  let html = `
+    <div class="bt-nav">
+      <button class="bt-back-btn" onclick="backTo(${btState.prevLevel === 1 ? 1 : 0})">
+        ← ${backLabel}
+      </button>
+      <span class="bt-breadcrumb">Record</span>
+      <span style="color:var(--muted);">/</span>
+      ${btState.tier ? `<span class="bt-breadcrumb" onclick="drillTier('${btState.tier}')" style="cursor:pointer;color:var(--blue);">${confLabel(btState.tier)}</span><span style="color:var(--muted);">/</span>` : ''}
+      <span class="bt-breadcrumb-cur">${r.away_team.split(' ').slice(-1)[0]} @ ${r.home_team.split(' ').slice(-1)[0]}</span>
+    </div>
+
+    <div class="play-detail">
+      <div class="play-header">
+        <div class="play-matchup">${r.away_team} @ ${r.home_team}</div>
+        <div class="play-sub">${r.date} &nbsp;·&nbsp; ${r.away_pitcher} vs ${r.home_pitcher}</div>
+        <div class="play-prob-bar" style="margin-top:12px;">
+          <div style="display:flex;justify-content:space-between;font-size:.76rem;color:var(--muted);margin-bottom:4px;">
+            <span>${r.away_team.split(' ').slice(-1)[0]} <strong style="color:var(--text);">${(r.away_win_pct*100).toFixed(1)}%</strong></span>
+            <span><strong style="color:var(--text);">${(r.home_win_pct*100).toFixed(1)}%</strong> ${r.home_team.split(' ').slice(-1)[0]}</span>
+          </div>
+          <div style="height:7px;background:var(--border);border-radius:4px;overflow:hidden;display:flex;">
+            <div style="width:${(r.away_win_pct*100).toFixed(1)}%;background:#388bfd;"></div>
+            <div style="width:${(r.home_win_pct*100).toFixed(1)}%;background:#3fb950;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="play-grid">
+        <div class="play-stat-card">
+          <div class="play-stat-label">Our Pick</div>
+          <div class="play-stat-val">${modelPick.split(' ').slice(-1)[0]} ML</div>
+          <div class="play-stat-sub">${confBadgeHtml(r.confidence_rec, r.confidence)}</div>
+        </div>
+        <div class="play-stat-card">
+          <div class="play-stat-label">Model Odds</div>
+          <div class="play-stat-val" style="font-size:.9rem;">
+            ${r.away_team.split(' ').slice(-1)[0]} ${fmtAmerican(awayML)}
+            &nbsp;/&nbsp;
+            ${r.home_team.split(' ').slice(-1)[0]} ${fmtAmerican(homeML)}
+          </div>
+          <div class="play-stat-sub">Model total: ${r.model_total.toFixed(1)} runs</div>
+        </div>
+        <div class="play-stat-card">
+          <div class="play-stat-label">Calculated Edge</div>
+          <div class="play-stat-val" style="color:${edge != null && edge >= 0.05 ? 'var(--green)' : edge != null && edge >= 0.02 ? 'var(--blue)' : 'var(--muted)'};">
+            ${edge != null ? fmtEdge(edge) : r.had_odds ? 'No edge found' : 'No odds stored'}
+          </div>
+          <div class="play-stat-sub">${r.had_odds ? 'Pre-game sportsbook lines used' : 'Odds not captured pre-game'}</div>
+        </div>
+        <div class="play-stat-card">
+          <div class="play-stat-label">Outcome</div>
+          <div class="play-stat-val" style="color:${correct ? 'var(--green)' : 'var(--red)'};">
+            ${correct ? '✓ Correct' : '✗ Wrong'}
+          </div>
+          <div class="play-stat-sub">
+            ${winner.split(' ').slice(-1)[0]} won ${r.home_won ? r.home_score + '–' + r.away_score : r.away_score + '–' + r.home_score}
+            &nbsp;·&nbsp; Total: ${r.actual_total}
+            ${r.book_total ? ' (line: ' + r.book_total + ')' : ''}
+          </div>
+        </div>
+      </div>
+
+      ${(r.bet_results && r.bet_results.length > 0) ? `
+      <div class="play-result-section">
+        <div class="play-result-label">Edge Details</div>
+        <table class="bt-tier-table" style="font-size:.82rem;">
+          <thead><tr><th>Market</th><th>Side</th><th>Edge</th><th>Rec</th><th>Result</th></tr></thead>
+          <tbody>
+            ${r.bet_results.map(b => {
+              const res = (b.type === 'OU' || b.side === 'over' || b.side === 'under')
+                ? ouResult(b)
+                : (b.won ? 'W' : 'L');
+              const resCls = res === 'W' ? 'tx-result-w' : res === 'L' ? 'tx-result-l' : 'tx-result-t';
+              const resLbl = res === 'W' ? '✓ W' : res === 'L' ? '✗ L' : res === 'T' ? '— Push' : '—';
+              const mkt = (b.type === 'OU' || b.side === 'over' || b.side === 'under') ? 'O/U' : 'ML';
+              return `<tr>
+                <td><span class="tx-type-badge tx-type-${mkt === 'ML' ? 'ml' : 'ou'}">${mkt}</span></td>
+                <td>${b.side.toUpperCase()}</td>
+                <td style="color:${b.edge >= 0.05 ? 'var(--green)' : 'var(--blue)'};">${fmtEdge(b.edge)}</td>
+                <td><span class="conf conf-${b.rec}">${b.rec}</span></td>
+                <td class="${resCls}">${resLbl}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>` : ''}
+    </div>`;
+
+  document.getElementById('bt-root').innerHTML = html;
+}
+
+/* ── Navigation actions ── */
+function drillTier(tier) {
+  btState = { level: 1, tier: tier, txIdx: null, prevLevel: 0 };
+  renderLevel1(tier);
+}
+function drillTx(idx) {
+  btState.prevLevel = btState.level;
+  btState.txIdx = idx;
+  btState.level = 2;
+  renderLevel2(idx);
+}
+function backTo(level) {
+  btState.level = level;
+  if (level === 0) {
+    btState.tier = null;
+    renderLevel0();
+  } else if (level === 1) {
+    renderLevel1(btState.tier);
+  }
+}
+
+/* ── Initial render ── */
+let btRendered = false;
+function renderBt() {
+  if (btRendered) return;
+  btRendered = true;
+  renderLevel0();
 }
 </script>
 </body>

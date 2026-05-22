@@ -20,7 +20,7 @@ from datetime import date, timedelta
 sys.path.insert(0, os.path.dirname(__file__))
 
 from data.fetcher import get_games_for_date
-from data.odds import fetch_odds, resolve_game_odds
+from data.odds import resolve_game_odds
 from data.player_stats import get_batter_profile, get_pitcher_profile, get_bullpen_profile
 from data.weather import get_wind_context
 from model.simulator import build_bullpen_profile

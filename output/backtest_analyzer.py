@@ -68,16 +68,16 @@ def analyze_backtest(results: list[dict]) -> dict | None:
                 "rate": hits / len(subset),
             }
 
-    # --- By edge range (bet-level, only when odds were available) ---
+    # --- ML bets by edge range ---
     by_edge = {}
-    all_bets = [
+    ml_bets = [
         bet
         for r in results
         for bet in r.get("bet_results", [])
-        if bet.get("won") is not None
+        if bet.get("type", "ML") == "ML" and bet.get("won") is not None
     ]
     for label, lo, hi in _EDGE_BUCKETS:
-        subset = [b for b in all_bets if lo <= b["edge"] < hi]
+        subset = [b for b in ml_bets if lo <= b["edge"] < hi]
         if subset:
             hits = sum(1 for b in subset if b["won"])
             by_edge[label] = {
@@ -86,21 +86,40 @@ def analyze_backtest(results: list[dict]) -> dict | None:
                 "rate": hits / len(subset),
             }
 
-    # --- O/U accuracy (only when book total known) ---
-    ou_games = [r for r in results if r.get("book_total") is not None]
+    # --- O/U bet results (from tracked edge plays in bet_results) ---
+    ou_bets = [
+        bet
+        for r in results
+        for bet in r.get("bet_results", [])
+        if bet.get("type") == "OU"
+    ]
     ou_stats = None
-    if ou_games:
-        ou_hits = sum(
-            1 for r in ou_games
-            if (r["model_total"] > r["book_total"] and r["actual_total"] > r["book_total"])
-            or (r["model_total"] < r["book_total"] and r["actual_total"] < r["book_total"])
-            or (r["model_total"] == r["book_total"])  # push — count as hit to be conservative
-        )
+    if ou_bets:
+        ou_w = sum(1 for b in ou_bets if b.get("won") is True)
+        ou_l = sum(1 for b in ou_bets if b.get("won") is False)
+        ou_t = sum(1 for b in ou_bets if b.get("won") is None)
+        decidable = ou_w + ou_l
         ou_stats = {
-            "games": len(ou_games),
-            "hits": ou_hits,
-            "rate": ou_hits / len(ou_games),
+            "bets": len(ou_bets),
+            "wins": ou_w,
+            "losses": ou_l,
+            "pushes": ou_t,
+            "rate": ou_w / decidable if decidable > 0 else 0.0,
         }
+
+    # --- O/U bets by edge range ---
+    by_ou_edge = {}
+    for label, lo, hi in _EDGE_BUCKETS:
+        subset = [b for b in ou_bets if lo <= b["edge"] < hi]
+        if subset:
+            wins = sum(1 for b in subset if b.get("won") is True)
+            losses = sum(1 for b in subset if b.get("won") is False)
+            pushes = sum(1 for b in subset if b.get("won") is None)
+            dec = wins + losses
+            by_ou_edge[label] = {
+                "bets": len(subset), "wins": wins, "losses": losses, "pushes": pushes,
+                "rate": wins / dec if dec > 0 else 0.0,
+            }
 
     return {
         "total_games": total,
@@ -112,6 +131,7 @@ def analyze_backtest(results: list[dict]) -> dict | None:
         "by_recommendation": by_recommendation,
         "by_edge": by_edge,
         "ou_stats": ou_stats,
+        "by_ou_edge": by_ou_edge,
     }
 
 
