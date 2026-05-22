@@ -58,6 +58,8 @@ def _batter_vs_pitcher(batter: dict, pitcher: dict) -> dict:
         "matchup_factor": round(matchup_factor, 3),
         "combined": round(combined, 3),
         "vs_pitcher_hand": pitcher_hand,
+        "avg_ev": batter.get("avg_ev", 0.0),
+        "hard_hit_rate": batter.get("hard_hit_rate", 0.0),
         "pitch_edges": _pitch_edges(pitch_mix, batter_woba_vs_pitch, batter_woba, pitcher),
     }
 
@@ -73,6 +75,8 @@ def _pitcher_summary(profile: dict) -> dict:
         "fip": profile.get("fip", 4.20),
         "whip": profile.get("whip", 1.35),
         "woba_allowed": profile.get("woba_allowed_overall"),
+        "avg_ev_allowed": profile.get("avg_ev_allowed", 0.0),
+        "hard_hit_allowed_rate": profile.get("hard_hit_allowed_rate", 0.0),
         "top_pitches": [{"type": pt, "pct": round(p * 100, 1)} for pt, p in top_pitches],
         "pitch_mix": pitch_mix,
     }

@@ -139,6 +139,13 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
 .edge-source-value { font-size: 1.1rem; font-weight: 700; }
 .edge-source-sub { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
 
+/* ── Lines comparison (edge rows) ── */
+.lines-team  { font-weight: 600; color: var(--text); margin-right: 6px; }
+.lines-model { color: var(--muted); font-size: 0.76rem; }
+.lines-sep   { color: var(--muted); margin: 0 5px; }
+.lines-best  { font-weight: 600; color: var(--text); }
+.odds-val    { font-feature-settings: "tnum"; letter-spacing: -0.01em; }
+
 /* ── Responsive ── */
 @media (max-width: 640px) {
   .games-grid { grid-template-columns: 1fr; }
@@ -157,7 +164,7 @@ footer { margin-top: 32px; text-align: center; font-size: 0.72rem; color: #4a556
 <table class="batter-table">
   <thead>
     <tr>
-      <th>#</th><th>Batter</th><th>wOBA</th><th>vs Hand</th><th>Pitch Mix</th><th>Match</th><th></th>
+      <th>#</th><th>Batter</th><th>wOBA</th><th>vs Hand</th><th>Avg EV</th><th>HH%</th><th>Pitch Mix</th><th>Match</th><th></th>
     </tr>
   </thead>
   <tbody>
@@ -168,12 +175,28 @@ footer { margin-top: 32px; text-align: center; font-size: 0.72rem; color: #4a556
       <span class="batter-name">{{ b.name.split()[-1] if b.name else '—' }}</span>
       <span class="hand-tag">({{ b.hand }})</span>
     </td>
-    <td>{{ "%.3f"|format(b.woba) }}</td>
+    <td>{{ "%.3f"|format(b.woba) if b.woba else "—" }}</td>
     <td>
+      {% if b.woba_vs_hand and b.woba %}
       <span class="{% if b.woba_vs_hand > b.woba * 1.05 %}favorable{% elif b.woba_vs_hand < b.woba * 0.95 %}unfavorable{% else %}neutral-val{% endif %}">
         {{ "%.3f"|format(b.woba_vs_hand) }}
       </span>
       <span style="font-size:.65rem;color:var(--muted);">vs{{ b.vs_pitcher_hand }}</span>
+      {% else %}<span style="color:var(--muted);">—</span>{% endif %}
+    </td>
+    <td>
+      {% if b.avg_ev and b.avg_ev > 0 %}
+      <span class="{% if b.avg_ev >= 91 %}favorable{% elif b.avg_ev < 87 %}unfavorable{% else %}neutral-val{% endif %}">
+        {{ "%.1f"|format(b.avg_ev) }}
+      </span>
+      {% else %}<span style="color:var(--muted);">—</span>{% endif %}
+    </td>
+    <td>
+      {% if b.hard_hit_rate and b.hard_hit_rate > 0 %}
+      <span class="{% if b.hard_hit_rate >= 0.43 %}favorable{% elif b.hard_hit_rate < 0.33 %}unfavorable{% else %}neutral-val{% endif %}">
+        {{ "%.0f"|format(b.hard_hit_rate * 100) }}%
+      </span>
+      {% else %}<span style="color:var(--muted);">—</span>{% endif %}
     </td>
     <td>
       <span class="{% if b.matchup_factor > 1.05 %}favorable{% elif b.matchup_factor < 0.95 %}unfavorable{% else %}neutral-val{% endif %}">
@@ -195,10 +218,10 @@ footer { margin-top: 32px; text-align: center; font-size: 0.72rem; color: #4a556
   </tbody>
 </table>
 <div style="font-size:.65rem;color:var(--muted);margin-top:6px;">
-  Match = combined split × pitch-mix factor vs league avg. >1.05 favorable (green), &lt;0.95 unfavorable (red).
+  Match = split × pitch-mix factor (geometric mean vs pitcher). EV: avg exit velo. HH%: hard-hit rate (≥95 mph). Green >1.05, red &lt;0.95.
 </div>
 {% else %}
-<div style="font-size:.78rem;color:var(--muted);padding:8px 0;">Lineup not posted — using league-average profiles.</div>
+<div style="font-size:.78rem;color:var(--muted);padding:8px 0;">Lineup not posted — using placeholder profiles.</div>
 {% endif %}
 {% endmacro %}
 
@@ -251,6 +274,14 @@ footer { margin-top: 32px; text-align: center; font-size: 0.72rem; color: #4a556
   <div class="prob-section">
     <div class="prob-header">
       <span>{{ game.away_team.split()[-1] }} <span class="prob-val">{{ sim.away_win_pct | pct }}</span></span>
+      {% set wind = game.wind if game.wind is defined else {} %}
+      {% if wind and not wind.dome and wind.wind_speed_mph > 1 %}
+      <span style="font-size:.72rem;color:var(--muted);">
+        {% if wind.outward_wind_mph >= 2 %}🌬️{% elif wind.outward_wind_mph <= -2 %}💨{% else %}↔{% endif %}
+        {{ wind.wind_speed_mph|int }} mph {{ wind.wind_dir_label }}
+        ({% if wind.outward_wind_mph >= 0 %}+{% endif %}{{ "%.0f"|format(wind.outward_wind_mph) }} out)
+      </span>
+      {% endif %}
       <span><span class="prob-val">{{ sim.home_win_pct | pct }}</span> {{ game.home_team.split()[-1] }}</span>
     </div>
     <div class="prob-bar">
@@ -259,62 +290,91 @@ footer { margin-top: 32px; text-align: center; font-size: 0.72rem; color: #4a556
     </div>
   </div>
 
-  <!-- ── Stats grid ── -->
+  <!-- ── Model odds grid ── -->
   <div class="stats-row">
     <div class="stat-box">
-      <div class="stat-lbl">{{ game.away_team.split()[-1] }} Win%</div>
-      <div class="stat-val">{{ sim.away_win_pct | pct }}</div>
-      <div class="stat-sub">Fair: {{ edge.model_fair_away_ml | american }}</div>
+      <div class="stat-lbl">{{ game.away_team.split()[-1] }} Model</div>
+      <div class="stat-val odds-val">{{ edge.model_fair_away_ml | american }}</div>
+      <div class="stat-sub">{{ sim.away_win_pct | pct }} implied</div>
     </div>
     <div class="stat-box">
-      <div class="stat-lbl">{{ game.home_team.split()[-1] }} Win%</div>
-      <div class="stat-val">{{ sim.home_win_pct | pct }}</div>
-      <div class="stat-sub">Fair: {{ edge.model_fair_home_ml | american }}</div>
+      <div class="stat-lbl">{{ game.home_team.split()[-1] }} Model</div>
+      <div class="stat-val odds-val">{{ edge.model_fair_home_ml | american }}</div>
+      <div class="stat-sub">{{ sim.home_win_pct | pct }} implied</div>
     </div>
     <div class="stat-box">
-      <div class="stat-lbl">Proj. Runs</div>
+      <div class="stat-lbl">Proj. Total</div>
       <div class="stat-val">{{ sim.avg_total_runs }}</div>
       <div class="stat-sub">{{ sim.avg_away_runs }} – {{ sim.avg_home_runs }}</div>
     </div>
     <div class="stat-box">
-      <div class="stat-lbl">Book Total</div>
-      <div class="stat-val">{% if edge.book_total %}{{ edge.book_total }}{% else %}N/A{% endif %}</div>
+      <div class="stat-lbl">Book O/U</div>
+      <div class="stat-val">{% if edge.book_total %}{{ edge.book_total }}{% else %}—{% endif %}</div>
       <div class="stat-sub">
         {% if edge.book_total %}
-          Diff: {% if sim.avg_total_runs > edge.book_total %}+{% endif %}{{ "%.1f"|format(sim.avg_total_runs - edge.book_total) }}
-        {% else %}No odds{% endif %}
+          Model {% if sim.avg_total_runs > edge.book_total %}+{% endif %}{{ "%.1f"|format(sim.avg_total_runs - edge.book_total) }} vs line
+        {% else %}No line{% endif %}
       </div>
     </div>
   </div>
 
-  <!-- ── Edge rows ── -->
+  <!-- ── Lines comparison (edge rows) ── -->
   {% if edge.has_odds %}
   <div class="edges-section">
-    {% if edge.home_edge is not none %}
-    <div class="edge-row {{ edge.home_edge | edge_class }}">
-      <span class="edge-lbl">{{ game.home_team }} ML <span style="color:var(--muted);font-size:.72rem;">({{ edge.book_home_ml | american }})</span></span>
-      <span class="edge-val">Edge: {% if edge.home_edge > 0 %}+{% endif %}{{ "%.1f"|format(edge.home_edge*100) }}%</span>
-    </div>
-    {% endif %}
     {% if edge.away_edge is not none %}
     <div class="edge-row {{ edge.away_edge | edge_class }}">
-      <span class="edge-lbl">{{ game.away_team }} ML <span style="color:var(--muted);font-size:.72rem;">({{ edge.book_away_ml | american }})</span></span>
-      <span class="edge-val">Edge: {% if edge.away_edge > 0 %}+{% endif %}{{ "%.1f"|format(edge.away_edge*100) }}%</span>
+      <span class="edge-lbl">
+        <span class="lines-team">{{ game.away_team.split()[-1] }}</span>
+        <span class="lines-model">Model {{ edge.model_fair_away_ml | american }}</span>
+        <span class="lines-sep">→</span>
+        <span class="lines-best">Best {{ edge.best_away_ml | american }}
+          <span style="font-size:.68rem;color:var(--muted);">({{ edge.best_away_book }})</span>
+        </span>
+      </span>
+      <span class="edge-val">{% if edge.away_edge > 0 %}+{% endif %}{{ "%.1f"|format(edge.away_edge*100) }}%</span>
+    </div>
+    {% endif %}
+    {% if edge.home_edge is not none %}
+    <div class="edge-row {{ edge.home_edge | edge_class }}">
+      <span class="edge-lbl">
+        <span class="lines-team">{{ game.home_team.split()[-1] }}</span>
+        <span class="lines-model">Model {{ edge.model_fair_home_ml | american }}</span>
+        <span class="lines-sep">→</span>
+        <span class="lines-best">Best {{ edge.best_home_ml | american }}
+          <span style="font-size:.68rem;color:var(--muted);">({{ edge.best_home_book }})</span>
+        </span>
+      </span>
+      <span class="edge-val">{% if edge.home_edge > 0 %}+{% endif %}{{ "%.1f"|format(edge.home_edge*100) }}%</span>
     </div>
     {% endif %}
     {% if edge.total_edge_over is not none %}
     <div class="edge-row {{ edge.total_edge_over | edge_class }}">
-      <span class="edge-lbl">Over {{ edge.book_total }} <span style="color:var(--muted);font-size:.72rem;">({{ edge.book_over_ml | american }})</span></span>
-      <span class="edge-val">Edge: {% if edge.total_edge_over > 0 %}+{% endif %}{{ "%.1f"|format(edge.total_edge_over*100) }}%</span>
+      <span class="edge-lbl">
+        <span class="lines-team">Over {{ edge.book_total }}</span>
+        <span class="lines-model">Model {{ sim.avg_total_runs }}</span>
+        <span class="lines-sep">→</span>
+        <span class="lines-best">{{ edge.book_over_ml | american }}</span>
+      </span>
+      <span class="edge-val">{% if edge.total_edge_over > 0 %}+{% endif %}{{ "%.1f"|format(edge.total_edge_over*100) }}%</span>
     </div>
     <div class="edge-row {{ edge.total_edge_under | edge_class }}">
-      <span class="edge-lbl">Under {{ edge.book_total }} <span style="color:var(--muted);font-size:.72rem;">({{ edge.book_under_ml | american }})</span></span>
-      <span class="edge-val">Edge: {% if edge.total_edge_under > 0 %}+{% endif %}{{ "%.1f"|format(edge.total_edge_under*100) }}%</span>
+      <span class="edge-lbl">
+        <span class="lines-team">Under {{ edge.book_total }}</span>
+        <span class="lines-model">Model {{ sim.avg_total_runs }}</span>
+        <span class="lines-sep">→</span>
+        <span class="lines-best">{{ edge.book_under_ml | american }}</span>
+      </span>
+      <span class="edge-val">{% if edge.total_edge_under > 0 %}+{% endif %}{{ "%.1f"|format(edge.total_edge_under*100) }}%</span>
     </div>
     {% endif %}
   </div>
   {% else %}
-  <div class="no-odds">No sportsbook odds available — add an Odds API key to see edge %.</div>
+  <div class="no-odds">
+    Model: {{ game.away_team.split()[-1] }} {{ edge.model_fair_away_ml | american }}
+    &nbsp;/&nbsp;
+    {{ game.home_team.split()[-1] }} {{ edge.model_fair_home_ml | american }}
+    &nbsp;—&nbsp;add <code>--odds-key</code> to compare against sportsbook lines.
+  </div>
   {% endif %}
 
   {% if sim.most_common_scores %}
@@ -403,6 +463,22 @@ footer { margin-top: 32px; text-align: center; font-size: 0.72rem; color: #4a556
               <div class="p-stat-val {% if sp.whip < 1.20 %}favorable{% elif sp.whip > 1.50 %}unfavorable{% endif %}">{{ "%.2f"|format(sp.whip) }}</div>
               <div class="p-stat-lbl">WHIP</div>
             </div>
+            {% if sp.avg_ev_allowed and sp.avg_ev_allowed > 0 %}
+            <div class="p-stat">
+              <div class="p-stat-val {% if sp.avg_ev_allowed < 87 %}favorable{% elif sp.avg_ev_allowed > 91 %}unfavorable{% endif %}">{{ "%.1f"|format(sp.avg_ev_allowed) }}</div>
+              <div class="p-stat-lbl">Avg EV</div>
+            </div>
+            <div class="p-stat">
+              <div class="p-stat-val {% if sp.hard_hit_allowed_rate < 0.33 %}favorable{% elif sp.hard_hit_allowed_rate > 0.42 %}unfavorable{% endif %}">{{ "%.0f"|format(sp.hard_hit_allowed_rate * 100) }}%</div>
+              <div class="p-stat-lbl">Hard Hit%</div>
+            </div>
+            {% if sp.woba_allowed %}
+            <div class="p-stat">
+              <div class="p-stat-val {% if sp.woba_allowed < 0.290 %}favorable{% elif sp.woba_allowed > 0.340 %}unfavorable{% endif %}">{{ "%.3f"|format(sp.woba_allowed) }}</div>
+              <div class="p-stat-lbl">wOBA All.</div>
+            </div>
+            {% endif %}
+            {% endif %}
           </div>
           {% if sp.top_pitches %}
           <div class="pitch-mix-title">Pitch Mix</div>

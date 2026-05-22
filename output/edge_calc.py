@@ -57,6 +57,11 @@ def compute_edge(simulation_result: dict, odds: dict | None) -> dict:
         "total_edge_under": None,
         "book_home_ml": None,
         "book_away_ml": None,
+        "best_home_ml": None,
+        "best_away_ml": None,
+        "best_home_book": None,
+        "best_away_book": None,
+        "all_ml": {},
         "book_total": None,
         "book_over_ml": None,
         "book_under_ml": None,
@@ -69,15 +74,23 @@ def compute_edge(simulation_result: dict, odds: dict | None) -> dict:
         return result
 
     result["has_odds"] = True
-    result["book_home_ml"] = odds.get("home_ml")
-    result["book_away_ml"] = odds.get("away_ml")
-    result["book_total"] = odds.get("total")
-    result["book_over_ml"] = odds.get("over_ml", -110)
-    result["book_under_ml"] = odds.get("under_ml", -110)
+    # Use best-available line for edge calculation (line shopping)
+    best_home_ml = odds.get("best_home_ml") or odds.get("home_ml")
+    best_away_ml = odds.get("best_away_ml") or odds.get("away_ml")
+    result["book_home_ml"]    = odds.get("home_ml")
+    result["book_away_ml"]    = odds.get("away_ml")
+    result["best_home_ml"]    = best_home_ml
+    result["best_away_ml"]    = best_away_ml
+    result["best_home_book"]  = odds.get("best_home_book", odds.get("bookmaker", ""))
+    result["best_away_book"]  = odds.get("best_away_book", odds.get("bookmaker", ""))
+    result["all_ml"]          = odds.get("all_ml", {})
+    result["book_total"]      = odds.get("total")
+    result["book_over_ml"]    = odds.get("over_ml", -110)
+    result["book_under_ml"]   = odds.get("under_ml", -110)
 
-    # Moneyline edge
-    home_ml = odds.get("home_ml")
-    away_ml = odds.get("away_ml")
+    # Moneyline edge — compare model against BEST available line
+    home_ml = best_home_ml
+    away_ml = best_away_ml
     if home_ml is not None and away_ml is not None:
         raw_home_prob = american_to_prob(home_ml)
         raw_away_prob = american_to_prob(away_ml)

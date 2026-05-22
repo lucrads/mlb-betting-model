@@ -8,10 +8,13 @@ Steps:
   1. Start with batter's base outcome rates (season/career stats)
   2. Adjust for L/R split vs pitcher handedness (batter's wOBA vs this hand / overall wOBA)
   3. Adjust for pitcher's pitch mix vs batter's pitch-type effectiveness
-     — denominator is what THIS pitcher actually allows per pitch type, not a league avg
-  4. Normalize to sum to 1.0
+     — geometric mean of batter/pitcher Statcast values; no league avg denominators
+  3a. Adjust for exit velocity matchup (hard contact vs soft contact allowed)
+  4. Adjust for wind (outward component raises/lowers HR and XBH rates)
+  5. Normalize to sum to 1.0
 """
 
+import math
 import numpy as np
 from config import FIP_WOBA_INTERCEPT, FIP_WOBA_SLOPE
 
@@ -26,7 +29,11 @@ _NEUTRAL_RATES = {
 }
 
 
-def compute_at_bat_probs(batter: dict, pitcher: dict) -> dict[str, float]:
+def compute_at_bat_probs(
+    batter: dict,
+    pitcher: dict,
+    outward_wind_mph: float = 0.0,
+) -> dict[str, float]:
     """
     Returns a dict {outcome: probability} for a single plate appearance.
     All adjustments use player-specific data only; empty data fields produce
@@ -36,6 +43,8 @@ def compute_at_bat_probs(batter: dict, pitcher: dict) -> dict[str, float]:
 
     rates = _apply_split_adjustment(rates, batter, pitcher)
     rates = _apply_pitch_mix_adjustment(rates, batter, pitcher)
+    rates = _apply_exit_velo_adjustment(rates, batter, pitcher)
+    rates = _apply_wind_adjustment(rates, outward_wind_mph)
     rates = _normalize(rates)
 
     return rates
@@ -136,6 +145,65 @@ def _apply_pitch_mix_adjustment(rates: dict, batter: dict, pitcher: dict) -> dic
         else:
             adjusted[outcome] = prob
 
+    return adjusted
+
+
+def _apply_exit_velo_adjustment(rates: dict, batter: dict, pitcher: dict) -> dict:
+    """
+    Scale HR and XBH rates based on the exit velocity matchup.
+
+    contact_factor = sqrt(pitcher_avg_ev_allowed / batter_avg_ev)
+      < 1.0 when pitcher suppresses EV (allows softer contact than batter generates)
+      > 1.0 when pitcher allows harder contact than batter typically generates
+
+    HR is highly sensitive to EV (needs ~95+ to carry); XBH is moderately sensitive.
+    Only applied when both players have sufficient Statcast EV data.
+    """
+    batter_ev = batter.get("avg_ev") or 0.0
+    pitcher_ev = pitcher.get("avg_ev_allowed") or 0.0
+
+    if batter_ev < 75 or pitcher_ev < 75:
+        return rates  # Insufficient data — no adjustment
+
+    contact_factor = math.sqrt(pitcher_ev / batter_ev)
+    # HR is ~2.5× more sensitive than XBH to exit velo changes
+    hr_mult  = float(np.clip(contact_factor ** 2.5, 0.65, 1.45))
+    xbh_mult = float(np.clip(contact_factor,        0.88, 1.12))
+
+    adjusted = {}
+    for outcome, prob in rates.items():
+        if outcome == "HR":
+            adjusted[outcome] = prob * hr_mult
+        elif outcome in ("2B", "3B"):
+            adjusted[outcome] = prob * xbh_mult
+        else:
+            adjusted[outcome] = prob
+    return adjusted
+
+
+def _apply_wind_adjustment(rates: dict, outward_wind_mph: float) -> dict:
+    """
+    Scale HR and XBH rates based on how much wind is blowing toward the outfield.
+
+    outward_wind_mph > 0: tailwind (helps fly balls carry) → more HR/XBH
+    outward_wind_mph < 0: headwind (suppresses fly balls) → fewer HR/XBH
+
+    Calibrated at ~0.7% HR change per 1 mph outward component.
+    """
+    if abs(outward_wind_mph) < 0.5:
+        return rates  # Negligible wind — no adjustment
+
+    hr_wind_mult  = float(np.clip(1.0 + outward_wind_mph * 0.007, 0.72, 1.32))
+    xbh_wind_mult = float(np.clip(1.0 + outward_wind_mph * 0.002, 0.90, 1.10))
+
+    adjusted = {}
+    for outcome, prob in rates.items():
+        if outcome == "HR":
+            adjusted[outcome] = prob * hr_wind_mult
+        elif outcome in ("2B", "3B"):
+            adjusted[outcome] = prob * xbh_wind_mult
+        else:
+            adjusted[outcome] = prob
     return adjusted
 
 

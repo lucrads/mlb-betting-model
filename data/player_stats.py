@@ -207,6 +207,8 @@ def get_batter_profile(player_name: str, player_id: int | None = None) -> dict:
         "woba": 0.0,
         "woba_vs_hand": {},      # Empty = no split data; no split adjustment applied
         "woba_vs_pitch": {},     # Empty = no pitch-type data; falls back to overall woba
+        "avg_ev": 0.0,           # Average exit velocity on contact (mph)
+        "hard_hit_rate": 0.0,    # Fraction of BBE with exit velo >= 95 mph
         "hand": "R",
         "data_source": "none",
     }
@@ -269,6 +271,13 @@ def get_batter_profile(player_name: str, player_id: int | None = None) -> dict:
             if not stands.empty:
                 profile["hand"] = stands.mode().iloc[0]
 
+        # Exit velocity stats from all batted ball events with a valid launch_speed
+        if "launch_speed" in sc.columns:
+            bbe = sc[sc["launch_speed"].notna() & (sc["launch_speed"] > 0)]
+            if len(bbe) >= 10:
+                profile["avg_ev"] = round(float(bbe["launch_speed"].mean()), 1)
+                profile["hard_hit_rate"] = round(float((bbe["launch_speed"] >= 95).mean()), 3)
+
     return profile
 
 
@@ -291,6 +300,8 @@ def get_pitcher_profile(player_name: str, player_id: int | None = None) -> dict:
         "pitch_mix": {},
         "pitch_woba_allowed": {},     # Populated only from player's Statcast data
         "woba_allowed_overall": None, # Computed from Statcast avg or FIP
+        "avg_ev_allowed": 0.0,        # Average exit velocity allowed (mph)
+        "hard_hit_allowed_rate": 0.0, # Fraction of BBE allowed with exit velo >= 95
     }
 
     if player_name in ("Unknown", "TBD", ""):
@@ -353,6 +364,13 @@ def get_pitcher_profile(player_name: str, player_id: int | None = None) -> dict:
         woba_allowed = _woba_by_pitch_type(sc, woba_col)
         if woba_allowed:
             profile["pitch_woba_allowed"] = woba_allowed
+
+        # Exit velocity allowed from all BBE with valid launch_speed
+        if "launch_speed" in sc.columns:
+            bbe = sc[sc["launch_speed"].notna() & (sc["launch_speed"] > 0)]
+            if len(bbe) >= 10:
+                profile["avg_ev_allowed"] = round(float(bbe["launch_speed"].mean()), 1)
+                profile["hard_hit_allowed_rate"] = round(float((bbe["launch_speed"] >= 95).mean()), 3)
 
     # Compute overall wOBA allowed: average of pitch-type data, or FIP-derived
     if profile["pitch_woba_allowed"]:

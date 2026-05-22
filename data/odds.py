@@ -1,4 +1,6 @@
-"""The Odds API — fetch live MLB moneyline + totals."""
+"""The Odds API — fetch live MLB moneyline + totals.
+Returns the best available line across all bookmakers (line shopping).
+"""
 
 import logging
 import requests
@@ -7,7 +9,6 @@ logger = logging.getLogger(__name__)
 
 _ODDS_URL = "https://api.the-odds-api.com/v4/sports/baseball_mlb/odds/"
 
-# Common team name aliases to help match sportsbook names to MLB API names
 _TEAM_ALIASES = {
     "Arizona Diamondbacks": ["Arizona Diamondbacks", "ARI"],
     "Atlanta Braves": ["Atlanta Braves", "ATL"],
@@ -53,18 +54,18 @@ def _normalize_team(name: str) -> str:
 
 def fetch_odds(api_key: str) -> dict:
     """
-    Fetch live MLB odds and return a dict keyed by (home_team, away_team) tuples
-    (normalized to MLB Stats API team names).
+    Fetch live MLB odds and return a dict keyed by (home_team, away_team).
+    Each value contains both the single-book line and the best-available (line-shopped) line.
 
-    Value format:
-    {
-        "home_ml": int,   # American odds, e.g. -130
-        "away_ml": int,
-        "total": float,   # e.g. 8.5
-        "over_ml": int,
-        "under_ml": int,
-        "bookmaker": str,
-    }
+    Value keys:
+      home_ml, away_ml         — from preferred book (DK > FD > MGM > Caesars)
+      best_home_ml             — highest ML available across ALL books for home team
+      best_away_ml             — highest ML available across ALL books for away team
+      best_home_book           — name of book offering best home ML
+      best_away_book           — name of book offering best away ML
+      total, over_ml, under_ml — from preferred book with totals data
+      bookmaker                — preferred book name used for totals
+      all_ml                   — {book_title: {home: int, away: int}} for all books
     """
     if not api_key:
         logger.warning("No Odds API key provided — skipping odds fetch.")
@@ -97,72 +98,111 @@ def fetch_odds(api_key: str) -> dict:
         if not bookmakers:
             continue
 
-        # Use first available bookmaker that has both markets
-        book_data = _parse_bookmaker(bookmakers)
+        book_data = _parse_all_bookmakers(bookmakers, home, away)
         if book_data:
             games_odds[(home, away)] = book_data
-            logger.debug("Odds loaded: %s @ %s — ML %s/%s | Total %.1f",
-                         away, home, book_data.get("away_ml"), book_data.get("home_ml"), book_data.get("total", 0))
+            logger.debug(
+                "Odds: %s @ %s — Best ML: home %s (%s) / away %s (%s) | Total %.1f",
+                away, home,
+                book_data.get("best_home_ml"), book_data.get("best_home_book"),
+                book_data.get("best_away_ml"), book_data.get("best_away_book"),
+                book_data.get("total") or 0,
+            )
 
     logger.info("Loaded odds for %d games.", len(games_odds))
     return games_odds
 
 
-def _parse_bookmaker(bookmakers: list) -> dict | None:
-    preferred = ["draftkings", "fanduel", "betmgm", "caesars"]
-    ordered = sorted(bookmakers, key=lambda b: (
-        preferred.index(b["key"]) if b["key"] in preferred else 99
-    ))
+def _parse_all_bookmakers(bookmakers: list, home_team: str, away_team: str) -> dict | None:
+    """Collect lines from every book and identify the best available per side."""
+    preferred_order = ["draftkings", "fanduel", "betmgm", "caesars", "pointsbet", "barstool"]
 
-    result = {}
-    for book in ordered:
+    all_ml: dict[str, dict] = {}   # book_title → {home: int, away: int}
+    totals_by_book: dict[str, dict] = {}  # book_title → {total, over_ml, under_ml}
+
+    for book in bookmakers:
+        title = book.get("title", book["key"])
         for market in book.get("markets", []):
             key = market.get("key")
             outcomes = {o["name"]: o["price"] for o in market.get("outcomes", [])}
+
             if key == "h2h":
-                if "home_ml" not in result:
-                    home_key = list(outcomes.keys())[0] if outcomes else None
-                    if home_key:
-                        home_team_odds = None
-                        away_team_odds = None
-                        for team_name, price in outcomes.items():
-                            # We'll store as-is and re-map later
-                            pass
-                        # Store raw for caller to map
-                        result["_h2h_raw"] = outcomes
-                        result["bookmaker"] = book.get("title", book["key"])
+                home_ml = away_ml = None
+                for name, price in outcomes.items():
+                    if _team_matches(name, home_team):
+                        home_ml = int(price)
+                    elif _team_matches(name, away_team):
+                        away_ml = int(price)
+                if home_ml is not None and away_ml is not None:
+                    all_ml[title] = {"home": home_ml, "away": away_ml}
+
             elif key == "totals":
-                if "total" not in result:
-                    over = outcomes.get("Over")
-                    under = outcomes.get("Under")
-                    total_line = market["outcomes"][0].get("point") if market.get("outcomes") else None
-                    if total_line:
-                        result["total"] = float(total_line)
-                        result["over_ml"] = int(over) if over else -110
-                        result["under_ml"] = int(under) if under else -110
+                over = outcomes.get("Over")
+                under = outcomes.get("Under")
+                total_pt = market["outcomes"][0].get("point") if market.get("outcomes") else None
+                if total_pt:
+                    totals_by_book[title] = {
+                        "total": float(total_pt),
+                        "over_ml": int(over) if over else -110,
+                        "under_ml": int(under) if under else -110,
+                    }
 
-        if "_h2h_raw" in result:
-            break
-
-    if "_h2h_raw" not in result:
+    if not all_ml:
         return None
 
+    # Best available: highest ML for each side across all books
+    best_home_ml = max(v["home"] for v in all_ml.values())
+    best_away_ml = max(v["away"] for v in all_ml.values())
+    best_home_book = next(t for t, v in all_ml.items() if v["home"] == best_home_ml)
+    best_away_book = next(t for t, v in all_ml.items() if v["away"] == best_away_ml)
+
+    # Preferred book for moneyline (also sets home_ml/away_ml for backwards compat)
+    pref_title = None
+    for pref in preferred_order:
+        match = next((t for t in all_ml if pref in t.lower()), None)
+        if match:
+            pref_title = match
+            break
+    if pref_title is None:
+        pref_title = next(iter(all_ml))
+
+    pref_ml = all_ml[pref_title]
+
+    # Preferred book for totals
+    pref_totals = None
+    for pref in preferred_order:
+        match = next((t for t in totals_by_book if pref in t.lower()), None)
+        if match:
+            pref_totals = totals_by_book[match]
+            break
+    if pref_totals is None and totals_by_book:
+        pref_totals = next(iter(totals_by_book.values()))
+
+    result = {
+        "home_ml":         pref_ml["home"],
+        "away_ml":         pref_ml["away"],
+        "best_home_ml":    best_home_ml,
+        "best_away_ml":    best_away_ml,
+        "best_home_book":  best_home_book,
+        "best_away_book":  best_away_book,
+        "bookmaker":       pref_title,
+        "all_ml":          all_ml,
+        "total":           pref_totals["total"] if pref_totals else None,
+        "over_ml":         pref_totals["over_ml"] if pref_totals else -110,
+        "under_ml":        pref_totals["under_ml"] if pref_totals else -110,
+    }
     return result
 
 
 def resolve_game_odds(odds_dict: dict, home_team: str, away_team: str) -> dict | None:
     """Look up odds for a game, trying fuzzy matching on team names."""
-    # Direct lookup
     key = (home_team, away_team)
     if key in odds_dict:
-        entry = dict(odds_dict[key])
-        return _assign_ml(entry, home_team, away_team)
+        return dict(odds_dict[key])
 
-    # Partial name match
     for (h, a), entry in odds_dict.items():
         if _team_matches(h, home_team) and _team_matches(a, away_team):
-            result = dict(entry)
-            return _assign_ml(result, home_team, away_team)
+            return dict(entry)
 
     return None
 
@@ -171,17 +211,3 @@ def _team_matches(api_name: str, query: str) -> bool:
     api_words = set(api_name.lower().split())
     query_words = set(query.lower().split())
     return bool(api_words & query_words)
-
-
-def _assign_ml(entry: dict, home_team: str, away_team: str) -> dict:
-    h2h = entry.pop("_h2h_raw", {})
-    home_ml = None
-    away_ml = None
-    for name, price in h2h.items():
-        if _team_matches(name, home_team):
-            home_ml = int(price)
-        elif _team_matches(name, away_team):
-            away_ml = int(price)
-    entry["home_ml"] = home_ml
-    entry["away_ml"] = away_ml
-    return entry

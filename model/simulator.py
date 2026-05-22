@@ -34,6 +34,7 @@ def simulate_game(game: dict, batter_profiles: dict, pitcher_profiles: dict) -> 
 
     home_runs = 0
     away_runs = 0
+    outward_wind_mph = game.get("outward_wind_mph", 0.0)
 
     # Lineup position state persists across innings
     away_batter_idx = 0
@@ -45,16 +46,18 @@ def simulate_game(game: dict, batter_profiles: dict, pitcher_profiles: dict) -> 
     while inning <= max_innings:
         # Top of inning: away team bats vs home pitcher
         away_pitcher = _get_active_pitcher(away_starter, away_bullpen, inning)
-        runs, away_batter_idx = _simulate_half_inning(away_lineup, away_batter_idx, away_pitcher)
+        runs, away_batter_idx = _simulate_half_inning(
+            away_lineup, away_batter_idx, away_pitcher, outward_wind_mph=outward_wind_mph,
+        )
         away_runs += runs
 
         # Bottom of inning: home team bats vs away pitcher
-        # Walk-off: end the half-inning the moment home team takes the lead (9th+)
         home_pitcher = _get_active_pitcher(home_starter, home_bullpen, inning)
         runs, home_batter_idx = _simulate_half_inning(
             home_lineup, home_batter_idx, home_pitcher,
             walkoff=(inning >= 9),
             runs_needed=(away_runs - home_runs) if inning >= 9 else 999,
+            outward_wind_mph=outward_wind_mph,
         )
         home_runs += runs
 
@@ -79,6 +82,7 @@ def _simulate_half_inning(
     pitcher: dict,
     walkoff: bool = False,
     runs_needed: int = 999,
+    outward_wind_mph: float = 0.0,
 ) -> tuple[int, int]:
     """
     Simulate one half-inning. Returns (runs_scored, next_batter_idx).
@@ -98,7 +102,7 @@ def _simulate_half_inning(
 
     while outs < 3:
         batter = lineup[current_idx % lineup_size]
-        probs = compute_at_bat_probs(batter, pitcher)
+        probs = compute_at_bat_probs(batter, pitcher, outward_wind_mph=outward_wind_mph)
         outcome = sample_outcome(probs)
 
         runs_scored, bases, outs = _apply_outcome(outcome, bases, outs)

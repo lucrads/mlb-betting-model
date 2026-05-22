@@ -27,9 +27,10 @@ from data.player_stats import (
     get_bullpen_profile,
 )
 from data.odds import fetch_odds, resolve_game_odds
+from data.weather import get_wind_context
 from model.simulator import build_bullpen_profile
 from model.monte_carlo import run_simulations
-from output.edge_calc import compute_edge
+from output.edge_calc import compute_edge, prob_to_american
 from output.matchup_details import compute_matchup_details
 from output.report import generate_report
 import config
@@ -118,6 +119,12 @@ def enrich_game(game: dict) -> dict:
         get_batter_profile(b["name"], b.get("id")) for b in game["away_lineup"]
     ]
 
+    # Wind context
+    wind = get_wind_context(game.get("venue", ""), game["date"])
+    game["wind"] = wind
+    game["outward_wind_mph"] = wind["outward_wind_mph"]
+    logger.info("Wind @ %s: %s", game.get("venue", "?"), wind["description"])
+
     return game
 
 
@@ -182,20 +189,50 @@ def main():
     logger.info("=== Report written: %s ===", report_path)
 
 
+def _fmt_ml(odds: int | None) -> str:
+    if odds is None:
+        return "N/A"
+    return f"+{odds}" if odds > 0 else str(odds)
+
+
 def _print_game_summary(game: dict, sim: dict, edge: dict) -> None:
     home = game["home_team"]
     away = game["away_team"]
     rec = edge["recommendation"]
+    wind = game.get("wind", {})
+
+    # Model-implied American odds
+    model_away_ml = prob_to_american(sim["away_win_pct"])
+    model_home_ml = prob_to_american(sim["home_win_pct"])
 
     print(f"\n  {away} @ {home}")
-    print(f"  Win%:  {away} {sim['away_win_pct']*100:.1f}%  |  {home} {sim['home_win_pct']*100:.1f}%")
-    print(f"  Runs:  {sim['avg_away_runs']:.1f} – {sim['avg_home_runs']:.1f}  (total: {sim['avg_total_runs']:.1f})")
+    print(f"  Model:   {away} {_fmt_ml(model_away_ml)}  |  {home} {_fmt_ml(model_home_ml)}")
 
     if edge["has_odds"]:
+        bh = edge.get("best_home_ml")
+        ba = edge.get("best_away_ml")
+        bh_bk = edge.get("best_home_book", "")
+        ba_bk = edge.get("best_away_book", "")
+        print(f"  Best:    {away} {_fmt_ml(ba)} ({ba_bk})  |  {home} {_fmt_ml(bh)} ({bh_bk})")
+
         if edge["home_edge"] is not None:
-            print(f"  ML Edge:  {home} {edge['home_edge']*100:+.1f}%  |  {away} {edge['away_edge']*100:+.1f}%")
+            # Show edge as implied-odds difference in plain language
+            better_side = home if (edge["home_edge"] or 0) >= (edge["away_edge"] or 0) else away
+            better_edge = max(edge["home_edge"] or 0, edge["away_edge"] or 0)
+            print(f"  ML Edge: {better_side} {better_edge*100:+.1f}%")
+
         if edge["total_edge_over"] is not None:
-            print(f"  O/U Edge: Over {edge['book_total']} {edge['total_edge_over']*100:+.1f}%  |  Under {edge['total_edge_under']*100:+.1f}%")
+            total = edge["book_total"]
+            ov = edge["total_edge_over"] or 0
+            un = edge["total_edge_under"] or 0
+            print(f"  O/U:     Model {sim['avg_total_runs']:.1f} | Line {total} → "
+                  f"Over {ov*100:+.1f}% / Under {un*100:+.1f}%")
+    else:
+        print(f"  Runs:    {sim['avg_away_runs']:.1f} – {sim['avg_home_runs']:.1f}  (total: {sim['avg_total_runs']:.1f})")
+
+    if wind.get("description") and not wind.get("dome"):
+        wdesc = wind["description"]
+        print(f"  Wind:    {wdesc}")
 
     print(f"  --> {rec}")
 
