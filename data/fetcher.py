@@ -53,6 +53,8 @@ def get_games_for_date(date_str: str) -> list[dict]:
             "home_lineup": home_lineup,
             "away_lineup": away_lineup,
             "venue": g.get("venue_name", ""),
+            "home_score": g.get("home_score"),
+            "away_score": g.get("away_score"),
         }
         games.append(game)
         logger.info(

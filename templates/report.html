@@ -146,6 +146,34 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
 .lines-best  { font-weight: 600; color: var(--text); }
 .odds-val    { font-feature-settings: "tnum"; letter-spacing: -0.01em; }
 
+/* ── Tab system ── */
+.tab-bar { display: flex; gap: 2px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+.tab-btn { background: none; border: none; border-bottom: 2px solid transparent; color: var(--muted); padding: 8px 18px 10px; font-size: 0.88rem; font-weight: 600; cursor: pointer; margin-bottom: -1px; transition: color .15s; }
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active { color: var(--blue); border-bottom-color: var(--blue); }
+.tab-badge { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; font-size: 0.7rem; padding: 1px 7px; margin-left: 6px; font-weight: 700; }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* ── Backtest tab ── */
+.bt-summary { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin-bottom: 24px; }
+.bt-kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; text-align: center; }
+.bt-kpi-val { font-size: 1.6rem; font-weight: 700; color: var(--text); line-height: 1; }
+.bt-kpi-lbl { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-top: 5px; }
+.bt-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 16px; overflow: hidden; }
+.bt-section-hdr { background: var(--surface2); padding: 10px 16px; font-size: 0.72rem; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-bottom: 1px solid var(--border); }
+.bt-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.bt-table th { text-align: left; color: var(--muted); font-weight: 500; padding: 8px 16px; border-bottom: 1px solid var(--border); font-size: 0.7rem; text-transform: uppercase; letter-spacing: .04em; }
+.bt-table td { padding: 9px 16px; border-bottom: 1px solid #21262d; }
+.bt-table tr:last-child td { border-bottom: none; }
+.bt-table tr:hover td { background: var(--surface2); }
+.bt-hit-bar-wrap { width: 120px; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; display: inline-block; vertical-align: middle; margin-left: 8px; }
+.bt-hit-bar { height: 100%; border-radius: 3px; }
+.bt-no-data { padding: 32px; text-align: center; color: var(--muted); font-size: 0.82rem; }
+.rate-good { color: var(--green); font-weight: 700; }
+.rate-ok   { color: var(--yellow); font-weight: 700; }
+.rate-bad  { color: var(--red); font-weight: 700; }
+
 /* ── Responsive ── */
 @media (max-width: 640px) {
   .games-grid { grid-template-columns: 1fr; }
@@ -225,6 +253,7 @@ footer { margin-top: 32px; text-align: center; font-size: 0.72rem; color: #4a556
 {% endif %}
 {% endmacro %}
 
+<!-- ── Page header ── -->
 <div class="page-header">
   <div>
     <div class="page-title">MLB Model Report</div>
@@ -237,6 +266,21 @@ footer { margin-top: 32px; text-align: center; font-size: 0.72rem; color: #4a556
   </div>
 </div>
 
+<!-- ── Tab bar ── -->
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="switchTab('games', this)">
+    Today's Games <span class="tab-badge">{{ total_games }}</span>
+  </button>
+  <button class="tab-btn" onclick="switchTab('backtest', this)">
+    Backtest
+    {% if bt %}<span class="tab-badge">{{ bt.total_games }}</span>{% endif %}
+  </button>
+</div>
+
+<!-- ══════════════════════════════════════════
+     TAB: Today's Games
+     ══════════════════════════════════════════ -->
+<div id="tab-games" class="tab-content active">
 <div class="games-grid">
 {% for g in games %}
 {% set sim  = g.simulation %}
@@ -526,7 +570,176 @@ footer { margin-top: 32px; text-align: center; font-size: 0.72rem; color: #4a556
 </div><!-- /game-card -->
 {% endfor %}
 </div><!-- /games-grid -->
+</div><!-- /tab-games -->
 
+<!-- ══════════════════════════════════════════
+     TAB: Backtest
+     ══════════════════════════════════════════ -->
+<div id="tab-backtest" class="tab-content">
+{% if bt %}
+
+<!-- KPI summary row -->
+<div class="bt-summary">
+  <div class="bt-kpi">
+    <div class="bt-kpi-val">{{ bt.total_games }}</div>
+    <div class="bt-kpi-lbl">Games Tracked</div>
+  </div>
+  <div class="bt-kpi">
+    <div class="bt-kpi-val {% if bt.ml_rate >= 0.55 %}rate-good{% elif bt.ml_rate >= 0.50 %}rate-ok{% else %}rate-bad{% endif %}">
+      {{ "%.1f"|format(bt.ml_rate * 100) }}%
+    </div>
+    <div class="bt-kpi-lbl">ML Accuracy</div>
+  </div>
+  <div class="bt-kpi">
+    <div class="bt-kpi-val">{{ bt.ml_correct }}</div>
+    <div class="bt-kpi-lbl">Correct Picks</div>
+  </div>
+  {% if bt.ou_stats %}
+  <div class="bt-kpi">
+    <div class="bt-kpi-val {% if bt.ou_stats.rate >= 0.55 %}rate-good{% elif bt.ou_stats.rate >= 0.50 %}rate-ok{% else %}rate-bad{% endif %}">
+      {{ "%.1f"|format(bt.ou_stats.rate * 100) }}%
+    </div>
+    <div class="bt-kpi-lbl">O/U Accuracy</div>
+  </div>
+  {% endif %}
+  <div class="bt-kpi">
+    <div class="bt-kpi-val" style="font-size:1rem;padding-top:4px;">{{ bt.date_range }}</div>
+    <div class="bt-kpi-lbl">Season Coverage</div>
+  </div>
+</div>
+
+<!-- By model confidence -->
+<div class="bt-section">
+  <div class="bt-section-hdr">ML Hit Rate by Model Confidence</div>
+  <table class="bt-table">
+    <thead><tr>
+      <th>Confidence</th><th>Games</th><th>Correct</th><th>Hit %</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for tier, stats in bt.by_confidence.items() %}
+    <tr>
+      <td><strong>{{ tier }}</strong></td>
+      <td>{{ stats.games }}</td>
+      <td>{{ stats.hits }}</td>
+      <td class="{% if stats.rate >= 0.60 %}rate-good{% elif stats.rate >= 0.52 %}rate-ok{% else %}rate-bad{% endif %}">
+        {{ "%.1f"|format(stats.rate * 100) }}%
+      </td>
+      <td>
+        <div class="bt-hit-bar-wrap">
+          <div class="bt-hit-bar" style="width:{{ (stats.rate*100)|round|int }}%;background:{% if stats.rate >= 0.60 %}var(--green){% elif stats.rate >= 0.52 %}var(--yellow){% else %}var(--red){% endif %};"></div>
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- By recommendation -->
+<div class="bt-section">
+  <div class="bt-section-hdr">ML Hit Rate by Model Recommendation</div>
+  <table class="bt-table">
+    <thead><tr>
+      <th>Signal</th><th>Games</th><th>Correct</th><th>Hit %</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for rec in ["BET", "LEAN", "PASS"] %}
+    {% if rec in bt.by_recommendation %}
+    {% set stats = bt.by_recommendation[rec] %}
+    <tr>
+      <td><span class="badge badge-{{ rec }}">{{ rec }}</span></td>
+      <td>{{ stats.games }}</td>
+      <td>{{ stats.hits }}</td>
+      <td class="{% if stats.rate >= 0.60 %}rate-good{% elif stats.rate >= 0.52 %}rate-ok{% else %}rate-bad{% endif %}">
+        {{ "%.1f"|format(stats.rate * 100) }}%
+      </td>
+      <td>
+        <div class="bt-hit-bar-wrap">
+          <div class="bt-hit-bar" style="width:{{ (stats.rate*100)|round|int }}%;background:{% if stats.rate >= 0.60 %}var(--green){% elif stats.rate >= 0.52 %}var(--yellow){% else %}var(--red){% endif %};"></div>
+        </div>
+      </td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- By edge range (only shown when bet_results data exists) -->
+{% if bt.by_edge %}
+<div class="bt-section">
+  <div class="bt-section-hdr">Bet Hit Rate by Edge Range (sportsbook lines required)</div>
+  <table class="bt-table">
+    <thead><tr>
+      <th>Edge Range</th><th>Bets</th><th>Won</th><th>Hit %</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for range_lbl, stats in bt.by_edge.items() %}
+    <tr>
+      <td><strong>{{ range_lbl }}</strong></td>
+      <td>{{ stats.bets }}</td>
+      <td>{{ stats.hits }}</td>
+      <td class="{% if stats.rate >= 0.60 %}rate-good{% elif stats.rate >= 0.52 %}rate-ok{% else %}rate-bad{% endif %}">
+        {{ "%.1f"|format(stats.rate * 100) }}%
+      </td>
+      <td>
+        <div class="bt-hit-bar-wrap">
+          <div class="bt-hit-bar" style="width:{{ (stats.rate*100)|round|int }}%;background:{% if stats.rate >= 0.60 %}var(--green){% elif stats.rate >= 0.52 %}var(--yellow){% else %}var(--red){% endif %};"></div>
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="bt-section">
+  <div class="bt-section-hdr">Bet Hit Rate by Edge Range</div>
+  <div class="bt-no-data">
+    Edge-range data accumulates when the model is run with live sportsbook odds before game time.<br>
+    Run <code>python3 main.py --date YYYY-MM-DD</code> on game days to build this history.
+  </div>
+</div>
+{% endif %}
+
+{% if bt.ou_stats %}
+<!-- O/U accuracy -->
+<div class="bt-section">
+  <div class="bt-section-hdr">Over / Under Direction Accuracy</div>
+  <table class="bt-table">
+    <thead><tr>
+      <th>Market</th><th>Games</th><th>Correct</th><th>Hit %</th><th></th>
+    </tr></thead>
+    <tbody>
+    <tr>
+      <td><strong>O/U Direction</strong></td>
+      <td>{{ bt.ou_stats.games }}</td>
+      <td>{{ bt.ou_stats.hits }}</td>
+      <td class="{% if bt.ou_stats.rate >= 0.55 %}rate-good{% elif bt.ou_stats.rate >= 0.50 %}rate-ok{% else %}rate-bad{% endif %}">
+        {{ "%.1f"|format(bt.ou_stats.rate * 100) }}%
+      </td>
+      <td>
+        <div class="bt-hit-bar-wrap">
+          <div class="bt-hit-bar" style="width:{{ (bt.ou_stats.rate*100)|round|int }}%;background:{% if bt.ou_stats.rate >= 0.55 %}var(--green){% elif bt.ou_stats.rate >= 0.50 %}var(--yellow){% else %}var(--red){% endif %};"></div>
+        </div>
+      </td>
+    </tr>
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div style="font-size:.72rem;color:var(--muted);margin-top:8px;">
+  Last updated {{ bt.last_updated }} · Run <code>python3 backtest.py</code> to refresh
+</div>
+
+{% else %}
+<div class="bt-no-data" style="margin-top:60px;">
+  <div style="font-size:1.1rem;margin-bottom:8px;">No backtest data yet</div>
+  Run <code>python3 backtest.py</code> to process this season's completed games (takes ~30–60 min first run).
+</div>
+{% endif %}
+</div><!-- /tab-backtest -->
 
 <footer>MLB Predictive Model · For informational purposes only · Not financial advice</footer>
 
@@ -537,6 +750,13 @@ function toggleDetail(id) {
   const isOpen = drawer.classList.contains('open');
   drawer.classList.toggle('open', !isOpen);
   icon.classList.toggle('open', !isOpen);
+}
+
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  if (btn) btn.classList.add('active');
 }
 </script>
 </body>

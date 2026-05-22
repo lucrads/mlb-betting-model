@@ -1,11 +1,15 @@
 """Generate styled HTML report from simulation results."""
 
 import os
+import json
 import logging
 from datetime import datetime
 from jinja2 import Environment, FileSystemLoader
+from output.backtest_analyzer import analyze_backtest
 
 logger = logging.getLogger(__name__)
+
+_BACKTEST_FILE = os.path.join(os.path.dirname(__file__), "..", "backtest_results.json")
 
 
 def generate_report(date_str: str, game_results: list[dict], output_dir: str = ".") -> str:
@@ -28,6 +32,17 @@ def generate_report(date_str: str, game_results: list[dict], output_dir: str = "
 
     template = env.get_template("report.html")
 
+    # Load backtest results if available
+    bt_stats = None
+    bt_path = os.path.normpath(_BACKTEST_FILE)
+    if os.path.exists(bt_path):
+        try:
+            with open(bt_path, encoding="utf-8") as f:
+                bt_results = json.load(f)
+            bt_stats = analyze_backtest(bt_results)
+        except Exception as e:
+            logger.warning("Could not load backtest results: %s", e)
+
     context = {
         "date": date_str,
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -35,6 +50,7 @@ def generate_report(date_str: str, game_results: list[dict], output_dir: str = "
         "total_games": len(game_results),
         "bet_count": sum(1 for g in game_results if g["edge"]["recommendation"] == "BET"),
         "lean_count": sum(1 for g in game_results if g["edge"]["recommendation"] == "LEAN"),
+        "bt": bt_stats,
     }
 
     html = template.render(**context)

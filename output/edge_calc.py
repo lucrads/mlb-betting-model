@@ -45,11 +45,19 @@ def compute_edge(simulation_result: dict, odds: dict | None) -> dict:
     model_away_prob = simulation_result["away_win_pct"]
     model_total = simulation_result["avg_total_runs"]
 
+    # Normalize to sum to 1.0 (ties in 15-inning cap cause slight discrepancy)
+    _total_win = model_home_prob + model_away_prob
+    if _total_win > 0:
+        model_home_prob_norm = model_home_prob / _total_win
+        model_away_prob_norm = model_away_prob / _total_win
+    else:
+        model_home_prob_norm = model_away_prob_norm = 0.5
+
     result = {
         "model_home_prob": model_home_prob,
         "model_away_prob": model_away_prob,
-        "model_fair_home_ml": prob_to_american(model_home_prob),
-        "model_fair_away_ml": prob_to_american(model_away_prob),
+        "model_fair_home_ml": prob_to_american(model_home_prob_norm),
+        "model_fair_away_ml": prob_to_american(model_away_prob_norm),
         "model_total": model_total,
         "home_edge": None,
         "away_edge": None,
