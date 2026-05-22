@@ -2,13 +2,13 @@
 MLB Predictive Betting Model
 
 Usage:
-  python main.py --date 2025-05-21 --odds-key YOUR_KEY
+  python main.py --date 2026-05-21                    # direct mode (legacy)
+  python main.py --date 2026-05-21 --agents           # multi-agent pipeline
+  python main.py --date 2026-05-21 --odds-key YOUR_KEY
+  ODDS_API_KEY=xxx python main.py --date 2026-05-21
 
-  # Use ODDS_API_KEY env var instead of --odds-key flag:
-  ODDS_API_KEY=xxx python main.py --date 2025-05-21
-
-  # Skip odds comparison (just model output):
-  python main.py --date 2025-05-21
+  # Fast dev iteration:
+  python main.py --date 2026-05-21 --sims 50
 """
 
 import sys
@@ -69,6 +69,11 @@ def parse_args():
         default=None,
         help=f"Number of simulations per game (default: {config.NUM_SIMULATIONS}).",
     )
+    parser.add_argument(
+        "--agents",
+        action="store_true",
+        help="Run multi-agent pipeline (data→math→engine→display) instead of direct mode.",
+    )
     return parser.parse_args()
 
 
@@ -128,12 +133,40 @@ def enrich_game(game: dict) -> dict:
     return game
 
 
+def _run_agent_pipeline(args) -> None:
+    """Run the full multi-agent pipeline: data → math → engine → display."""
+    from agents.data_agent import run as data_run
+    from agents.math_agent import run as math_run
+    from agents.engine_agent import run as engine_run
+    from agents.display_agent import run as display_run
+
+    logger.info("=== MLB Model (Agent Pipeline) | %s | %d sims ===",
+                args.date, config.NUM_SIMULATIONS)
+
+    logger.info("--- Step 1: Data Agent ---")
+    data_run(date=args.date, odds_key=args.odds_key)
+
+    logger.info("--- Step 2: Math Agent ---")
+    math_run(date=args.date)
+
+    logger.info("--- Step 3: Engine Agent ---")
+    engine_run(date=args.date, n_sims=config.NUM_SIMULATIONS)
+
+    logger.info("--- Step 4: Display Agent ---")
+    report_path = display_run(date=args.date, output_dir=args.output_dir)
+    logger.info("=== Done. Report: %s ===", report_path)
+
+
 def main():
     args = parse_args()
 
     # Override sim count if provided
     if args.sims:
         config.NUM_SIMULATIONS = args.sims
+
+    if args.agents:
+        _run_agent_pipeline(args)
+        return
 
     # API key: CLI flag > env var
     odds_api_key = args.odds_key or config.ODDS_API_KEY

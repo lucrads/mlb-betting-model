@@ -727,15 +727,70 @@ footer { margin-top: 32px; text-align: center; font-size: 0.72rem; color: #4a556
 {% endif %}
 
 <div style="font-size:.72rem;color:var(--muted);margin-top:8px;">
-  Last updated {{ bt.last_updated }} · Run <code>python3 backtest.py</code> to refresh
+  Last updated {{ bt.last_updated }} · Run <code>python3 agents/backtest_agent.py</code> to refresh
 </div>
 
+{% endif %}
+
+<!-- ── Scrollable Game Log ── -->
+{% if bt_log %}
+<div class="bt-section" style="margin-top:{% if bt %}16px{% else %}60px{% endif %};">
+  <div class="bt-section-hdr" style="display:flex;align-items:center;justify-content:space-between;">
+    <span>Game-by-Game Log</span>
+    <span style="font-weight:400;color:var(--muted);">{{ bt_log|length }} games</span>
+  </div>
+  <div style="max-height:480px;overflow-y:auto;">
+    <table class="bt-table" style="font-size:0.78rem;">
+      <thead style="position:sticky;top:0;background:var(--surface2);z-index:1;">
+        <tr>
+          <th>Date</th>
+          <th>Matchup</th>
+          <th>Model Pick</th>
+          <th>Result</th>
+          <th>Conf</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in bt_log %}
+      {% set model_picks_home = r.home_win_pct >= r.away_win_pct %}
+      {% set pick_team = r.home_team if model_picks_home else r.away_team %}
+      {% set actual = r.home_score|string + '–' + r.away_score|string %}
+      <tr>
+        <td style="white-space:nowrap;color:var(--muted);">{{ r.date[5:] }}</td>
+        <td style="white-space:nowrap;">
+          <span style="color:var(--muted);">{{ r.away_team.split()[-1] }}</span>
+          <span style="color:var(--muted);margin:0 3px;">@</span>
+          <span>{{ r.home_team.split()[-1] }}</span>
+        </td>
+        <td style="font-weight:600;">{{ pick_team.split()[-1] }}</td>
+        <td style="white-space:nowrap;color:var(--muted);">
+          <span class="{% if r.home_won %}favorable{% else %}unfavorable{% endif %}" style="font-weight:600;font-size:0.72rem;">
+            {{ r.home_team.split()[-1] if r.home_won else r.away_team.split()[-1] }}
+          </span>
+          {{ actual }}
+        </td>
+        <td style="color:var(--muted);font-size:0.72rem;">{{ "%.0f"|format(r.confidence * 100) }}%</td>
+        <td>
+          {% if r.model_correct_ml %}
+          <span style="color:var(--green);font-weight:700;font-size:0.8rem;">✓</span>
+          {% else %}
+          <span style="color:var(--red);font-weight:700;font-size:0.8rem;">✗</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
 {% else %}
-<div class="bt-no-data" style="margin-top:60px;">
+<div class="bt-no-data" style="margin-top:{% if not bt %}60px{% else %}0{% endif %};">
   <div style="font-size:1.1rem;margin-bottom:8px;">No backtest data yet</div>
-  Run <code>python3 backtest.py</code> to process this season's completed games (takes ~30–60 min first run).
+  Run <code>python3 agents/backtest_agent.py</code> to process this season's completed games.
 </div>
 {% endif %}
+
 </div><!-- /tab-backtest -->
 
 <footer>MLB Predictive Model · For informational purposes only · Not financial advice</footer>

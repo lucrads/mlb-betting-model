@@ -1,0 +1,256 @@
+#!/usr/bin/env python3
+"""
+MLB Model CLI dispatcher — natural language shorthand for all agents.
+
+Usage:
+  ./mlb <agent> [natural language description]
+
+  mlb data                                   → data agent, today
+  mlb data for tomorrow                      → data agent, tomorrow's date
+  mlb math                                   → math agent, today
+  mlb engine                                 → engine agent, 1000 sims, today
+  mlb engine fast                            → engine agent, 50 sims (dev mode)
+  mlb engine 500 sims for tomorrow           → engine agent, 500 sims, tomorrow
+  mlb backtest                               → incremental backtest update
+  mlb backtest refresh                       → backtest --refresh (re-run all)
+  mlb backtest run a refresh with the new model revisions
+  mlb backtest this week                     → backtest last 7 days
+  mlb display                                → generate report for today
+  mlb display tomorrow                       → generate report for tomorrow
+  mlb all                                    → full pipeline (data→math→engine→display)
+  mlb all tomorrow fast                      → full pipeline, tomorrow, 50 sims
+"""
+
+import sys
+import os
+import re
+import subprocess
+from datetime import date, timedelta
+
+# ── Project root ──────────────────────────────────────────────────────────────
+ROOT = os.path.dirname(os.path.abspath(__file__))
+
+# ── Agent → script mapping ────────────────────────────────────────────────────
+AGENTS = {
+    "data":     os.path.join(ROOT, "agents", "data_agent.py"),
+    "math":     os.path.join(ROOT, "agents", "math_agent.py"),
+    "engine":   os.path.join(ROOT, "agents", "engine_agent.py"),
+    "backtest": os.path.join(ROOT, "agents", "backtest_agent.py"),
+    "display":  os.path.join(ROOT, "agents", "display_agent.py"),
+    "all":      None,  # orchestrated via main.py --agents
+}
+
+ALIASES = {
+    "bt":      "backtest",
+    "sim":     "engine",
+    "sims":    "engine",
+    "report":  "display",
+    "show":    "display",
+    "fetch":   "data",
+    "run":     "all",
+}
+
+TODAY = date.today()
+
+
+# ── Natural language parsers ───────────────────────────────────────────────────
+
+def _parse_date(tokens: list[str]) -> str | None:
+    """Extract a date from free-form tokens. Returns ISO string or None."""
+    text = " ".join(tokens).lower()
+
+    if "tomorrow" in text:
+        return (TODAY + timedelta(days=1)).isoformat()
+    if "yesterday" in text:
+        return (TODAY - timedelta(days=1)).isoformat()
+    if "today" in text:
+        return TODAY.isoformat()
+
+    # ISO date: 2026-05-22
+    m = re.search(r"\b(\d{4}-\d{2}-\d{2})\b", text)
+    if m:
+        return m.group(1)
+
+    # Month name + day: "may 22", "june 1"
+    months = {
+        "jan": 1, "january": 1, "feb": 2, "february": 2,
+        "mar": 3, "march": 3, "apr": 4, "april": 4,
+        "may": 5, "jun": 6, "june": 6, "jul": 7, "july": 7,
+        "aug": 8, "august": 8, "sep": 9, "september": 9,
+        "oct": 10, "october": 10, "nov": 11, "november": 11,
+        "dec": 12, "december": 12,
+    }
+    m = re.search(r"\b(" + "|".join(months) + r")\s+(\d{1,2})\b", text)
+    if m:
+        month = months[m.group(1)]
+        day = int(m.group(2))
+        return date(TODAY.year, month, day).isoformat()
+
+    return None
+
+
+def _parse_sims(tokens: list[str]) -> int | None:
+    """Extract simulation count. Returns int or None."""
+    text = " ".join(tokens).lower()
+    if re.search(r"\bfast\b|\bquick\b|\bdev\b|\btest\b", text):
+        return 50
+    if re.search(r"\bfull\b|\bprod\b|\bproduction\b", text):
+        return 1000
+    m = re.search(r"\b(\d+)\s*sims?\b|\bsims?\s+(\d+)\b", text)
+    if m:
+        return int(m.group(1) or m.group(2))
+    return None
+
+
+def _parse_refresh(tokens: list[str]) -> bool:
+    """Return True if the phrase indicates a full refresh."""
+    text = " ".join(tokens).lower()
+    return bool(re.search(
+        r"\brefresh\b|\brerun\b|\bre-run\b|\bre\s*run\b|\bnew model\b|\brevision\b",
+        text
+    ))
+
+
+def _parse_date_range(tokens: list[str]) -> tuple[str | None, str | None]:
+    """Extract a start/end date range. Returns (start_iso, end_iso) or (None, None)."""
+    text = " ".join(tokens).lower()
+    yesterday = (TODAY - timedelta(days=1)).isoformat()
+
+    if re.search(r"\bthis\s+week\b|\blast\s+7\s+days?\b|\bpast\s+week\b", text):
+        start = (TODAY - timedelta(days=7)).isoformat()
+        return start, yesterday
+
+    if re.search(r"\bthis\s+month\b|\blast\s+30\s+days?\b|\bpast\s+month\b", text):
+        start = (TODAY - timedelta(days=30)).isoformat()
+        return start, yesterday
+
+    m = re.search(r"\blast\s+(\d+)\s+days?\b", text)
+    if m:
+        n = int(m.group(1))
+        start = (TODAY - timedelta(days=n)).isoformat()
+        return start, yesterday
+
+    if re.search(r"\bsince\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)", text):
+        d = _parse_date(tokens)
+        if d:
+            return d, yesterday
+
+    return None, None
+
+
+# ── Flag builders per agent ────────────────────────────────────────────────────
+
+def _flags_data(tokens):
+    flags = []
+    d = _parse_date(tokens)
+    if d:
+        flags += ["--date", d]
+    return flags
+
+
+def _flags_math(tokens):
+    flags = []
+    d = _parse_date(tokens)
+    if d:
+        flags += ["--date", d]
+    return flags
+
+
+def _flags_engine(tokens):
+    flags = []
+    d = _parse_date(tokens)
+    if d:
+        flags += ["--date", d]
+    s = _parse_sims(tokens)
+    if s:
+        flags += ["--sims", str(s)]
+    return flags
+
+
+def _flags_backtest(tokens):
+    flags = []
+    start, end = _parse_date_range(tokens)
+    if start:
+        flags += ["--start", start]
+    if end:
+        flags += ["--end", end]
+    else:
+        # Single date override
+        d = _parse_date(tokens)
+        if d:
+            flags += ["--date", d]
+    if _parse_refresh(tokens):
+        flags.append("--refresh")
+    return flags
+
+
+def _flags_display(tokens):
+    flags = []
+    d = _parse_date(tokens)
+    if d:
+        flags += ["--date", d]
+    return flags
+
+
+FLAG_BUILDERS = {
+    "data":     _flags_data,
+    "math":     _flags_math,
+    "engine":   _flags_engine,
+    "backtest": _flags_backtest,
+    "display":  _flags_display,
+}
+
+
+# ── Runner ────────────────────────────────────────────────────────────────────
+
+def run_agent(agent: str, tokens: list[str]) -> None:
+    """Build flags and exec the agent script."""
+    builder = FLAG_BUILDERS.get(agent)
+    flags = builder(tokens) if builder else []
+    script = AGENTS[agent]
+    cmd = [sys.executable, script] + flags
+    print(f"  → python3 {os.path.relpath(script, ROOT)} {' '.join(flags)}\n")
+    subprocess.run(cmd, cwd=ROOT)
+
+
+def run_all(tokens: list[str]) -> None:
+    """Run the full agent pipeline via main.py --agents."""
+    flags = ["--agents"]
+    d = _parse_date(tokens)
+    if d:
+        flags += ["--date", d]
+    s = _parse_sims(tokens)
+    if s:
+        flags += ["--sims", str(s)]
+    cmd = [sys.executable, os.path.join(ROOT, "main.py")] + flags
+    print(f"  → python3 main.py {' '.join(flags)}\n")
+    subprocess.run(cmd, cwd=ROOT)
+
+
+# ── Entry point ───────────────────────────────────────────────────────────────
+
+def main():
+    if len(sys.argv) < 2:
+        print(__doc__)
+        sys.exit(0)
+
+    raw_agent = sys.argv[1].lower().rstrip(",")
+    tokens = sys.argv[2:]
+
+    # Resolve alias
+    agent = ALIASES.get(raw_agent, raw_agent)
+
+    if agent not in AGENTS:
+        print(f"Unknown agent '{raw_agent}'. Choose from: {', '.join(AGENTS)}")
+        sys.exit(1)
+
+    print(f"\n[mlb] {agent}  •  '{' '.join(tokens) or 'no args'}'")
+
+    if agent == "all":
+        run_all(tokens)
+    else:
+        run_agent(agent, tokens)
+
+
+if __name__ == "__main__":
+    main()

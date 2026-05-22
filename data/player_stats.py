@@ -65,12 +65,15 @@ def _get_batter_season_stats(mlbam_id: int, season: int) -> dict:
     try:
         result = statsapi.player_stat_data(mlbam_id, type="season", group="hitting")
         player_info = {"hand": result.get("bat_side", "R")}
-        for s in result.get("stats", []):
+        all_stats = result.get("stats", [])
+        for s in all_stats:
             if str(s.get("season")) == str(season):
                 player_info["stats"] = s["stats"]
                 return player_info
-        if result.get("stats"):
-            player_info["stats"] = result["stats"][0]["stats"]
+        # No exact season match — use the most recent season available
+        if all_stats:
+            most_recent = max(all_stats, key=lambda s: int(s.get("season", 0)))
+            player_info["stats"] = most_recent["stats"]
         return player_info
     except Exception as exc:
         logger.debug("Batter season stats failed id=%s: %s", mlbam_id, exc)
@@ -96,12 +99,15 @@ def _get_pitcher_season_stats(mlbam_id: int, season: int) -> dict:
     try:
         result = statsapi.player_stat_data(mlbam_id, type="season", group="pitching")
         player_info = {"hand": result.get("pitch_hand", "R")}
-        for s in result.get("stats", []):
+        all_stats = result.get("stats", [])
+        for s in all_stats:
             if str(s.get("season")) == str(season):
                 player_info["stats"] = s["stats"]
                 return player_info
-        if result.get("stats"):
-            player_info["stats"] = result["stats"][0]["stats"]
+        # No exact season match — use the most recent season available
+        if all_stats:
+            most_recent = max(all_stats, key=lambda s: int(s.get("season", 0)))
+            player_info["stats"] = most_recent["stats"]
         return player_info
     except Exception as exc:
         logger.debug("Pitcher season stats failed id=%s: %s", mlbam_id, exc)
@@ -150,8 +156,7 @@ def _woba_by_pitch_type(df: pd.DataFrame, woba_col: str = "woba_value") -> dict:
 
 def _compute_woba_from_stats(stats: dict, pa: int) -> float:
     """Compute wOBA from MLB Stats API season/career stat dict."""
-    hr = int(stats.get("homeRuns", 0))
-    bb = int(stats.get("baseOnBalls", 0)) + int(stats.get("intentionalWalks", 0))
+    hr  = int(stats.get("homeRuns", 0))
     hbp = int(stats.get("hitByPitch", 0))
     ibb = int(stats.get("intentionalWalks", 0))
     sh  = int(stats.get("sacBunts", 0))
@@ -159,7 +164,8 @@ def _compute_woba_from_stats(stats: dict, pa: int) -> float:
     doubles = int(stats.get("doubles", 0))
     triples = int(stats.get("triples", 0))
     singles = max(h - doubles - triples - hr, 0)
-    ubb = max(bb - ibb, 0)
+    # baseOnBalls from MLB API already includes IBB; subtract to get unintentional walks
+    ubb = max(int(stats.get("baseOnBalls", 0)) - ibb, 0)
 
     woba_num = (0.69 * ubb + 0.72 * hbp + 0.89 * singles
                 + 1.27 * doubles + 1.62 * triples + 2.10 * hr)
@@ -170,7 +176,8 @@ def _compute_woba_from_stats(stats: dict, pa: int) -> float:
 def _outcome_rates_from_stats(stats: dict, pa: int) -> dict:
     """Compute per-PA outcome rate dict from MLB Stats API stat dict."""
     hr = int(stats.get("homeRuns", 0))
-    bb = int(stats.get("baseOnBalls", 0)) + int(stats.get("intentionalWalks", 0))
+    # baseOnBalls includes IBB; use raw total for rate (IBBs advance runners same as UBB)
+    bb = int(stats.get("baseOnBalls", 0))
     k  = int(stats.get("strikeOuts", 0))
     h  = int(stats.get("hits", 0))
     doubles = int(stats.get("doubles", 0))
@@ -195,12 +202,15 @@ def _outcome_rates_from_stats(stats: dict, pa: int) -> dict:
 # Batter profile
 # ---------------------------------------------------------------------------
 
-def get_batter_profile(player_name: str, player_id: int | None = None) -> dict:
+def get_batter_profile(player_name: str, player_id: int | None = None, season: int | None = None) -> dict:
     """
     Returns a dict with outcome_rates, woba, woba_vs_hand, woba_vs_pitch, hand.
     All stats are player-specific. Fields default to empty/zero when data is
     unavailable; the matchup engine treats empty data as neutral (no adjustment).
+    Pass season= to fetch historical stats (defaults to CURRENT_SEASON).
     """
+    _season = season or CURRENT_SEASON
+
     profile = {
         "name": player_name,
         "outcome_rates": None,   # None = no data; matchup engine handles
@@ -217,37 +227,48 @@ def get_batter_profile(player_name: str, player_id: int | None = None) -> dict:
     if not mlbam_id:
         return profile
 
-    # --- MLB Stats API: try current season, fall back to career ---
-    season_data = _get_batter_season_stats(mlbam_id, CURRENT_SEASON)
+    # --- MLB Stats API: current season (PA ≥ 100) → prior season ---
+    season_data = _get_batter_season_stats(mlbam_id, _season)
     profile["hand"] = season_data.get("hand", "R")
     stats = season_data.get("stats", {})
     pa = int(stats.get("plateAppearances", 0)) if stats else 0
 
-    if pa < 20:
-        # Season sample too small — try career stats
-        career_data = _get_batter_career_stats(mlbam_id)
-        career_stats = career_data.get("stats", {})
-        career_pa = int(career_stats.get("plateAppearances", 0)) if career_stats else 0
-        if career_pa >= 50:
-            stats = career_stats
-            pa = career_pa
-            profile["data_source"] = "career"
-            logger.debug("Using career stats for %s (season PA=%d)", player_name, int(season_data.get("stats", {}).get("plateAppearances", 0)) if season_data.get("stats") else 0)
-        elif career_pa > 0:
-            stats = career_stats
-            pa = career_pa
-            profile["data_source"] = "career_small"
-        # else: pa stays 0, no data
-    else:
+    if pa >= 100:
         profile["data_source"] = "season"
+    else:
+        # Fewer than 100 PA this season — use prior season stats instead
+        prior_data = _get_batter_season_stats(mlbam_id, _season - 1)
+        prior_stats = prior_data.get("stats", {})
+        prior_pa = int(prior_stats.get("plateAppearances", 0)) if prior_stats else 0
+        if prior_pa > 0:
+            stats = prior_stats
+            pa = prior_pa
+            profile["data_source"] = "prior_season"
+            logger.debug(
+                "Batter %s: prior-season stats (current PA=%d, prior PA=%d)",
+                player_name,
+                int(season_data.get("stats", {}).get("plateAppearances", 0) if season_data.get("stats") else 0),
+                prior_pa,
+            )
+        else:
+            # No prior season data either — keep whatever current season has
+            profile["data_source"] = "season" if pa > 0 else "none"
 
     if pa >= 10 and stats:
         profile["outcome_rates"] = _outcome_rates_from_stats(stats, pa)
         profile["woba"] = _compute_woba_from_stats(stats, pa)
 
     # --- Statcast enrichment (Baseball Savant) ---
-    start, end = _season_dates(CURRENT_SEASON)
+    # Extend to prior season when current-season PA is below the 100-PA threshold,
+    # matching the stat-source decision above for consistency.
+    start, end = _season_dates(_season)
     sc = _statcast_batter_cached(mlbam_id, start, end)
+    current_pa = int((season_data.get("stats") or {}).get("plateAppearances", 0))
+    if current_pa < 100:
+        prior_start, _ = _season_dates(_season - 1)
+        sc_ext = _statcast_batter_cached(mlbam_id, prior_start, end)
+        if not sc_ext.empty and len(sc_ext) > len(sc):
+            sc = sc_ext
     if not sc.empty:
         # Terminal events only: woba_value is NaN on non-terminal pitches
         terminal = sc[sc["woba_value"].notna()] if "woba_value" in sc.columns else pd.DataFrame()
@@ -285,12 +306,15 @@ def get_batter_profile(player_name: str, player_id: int | None = None) -> dict:
 # Pitcher profile
 # ---------------------------------------------------------------------------
 
-def get_pitcher_profile(player_name: str, player_id: int | None = None) -> dict:
+def get_pitcher_profile(player_name: str, player_id: int | None = None, season: int | None = None) -> dict:
     """
     Returns a dict with era, fip, whip, pitch_mix, pitch_woba_allowed, hand.
     pitch_woba_allowed contains only pitch types with actual Statcast data.
     woba_allowed_overall is the pitcher's average wOBA allowed (for fallback use).
+    Pass season= to fetch historical stats (defaults to CURRENT_SEASON).
     """
+    _season = season or CURRENT_SEASON
+
     profile = {
         "name": player_name,
         "era": 4.50,
@@ -313,10 +337,33 @@ def get_pitcher_profile(player_name: str, player_id: int | None = None) -> dict:
         profile["woba_allowed_overall"] = _fip_to_woba(profile["fip"])
         return profile
 
-    # --- MLB Stats API season totals ---
-    season_data = _get_pitcher_season_stats(mlbam_id, CURRENT_SEASON)
+    # --- MLB Stats API: current season (IP ≥ 20) → prior season ---
+    season_data = _get_pitcher_season_stats(mlbam_id, _season)
     profile["hand"] = season_data.get("hand", "R")
     stats = season_data.get("stats", {})
+
+    def _parse_ip(s: dict) -> float:
+        try:
+            return float(s.get("inningsPitched", "0") or 0)
+        except (ValueError, TypeError):
+            return 0.0
+
+    ip = _parse_ip(stats) if stats else 0.0
+
+    # Fewer than 20 IP this season — use prior season stats instead
+    if ip < 20:
+        prior_pdata = _get_pitcher_season_stats(mlbam_id, _season - 1)
+        prior_pstats = prior_pdata.get("stats", {})
+        prior_ip = _parse_ip(prior_pstats) if prior_pstats else 0.0
+        if prior_ip > 0:
+            stats = prior_pstats
+            ip = prior_ip
+            profile["hand"] = prior_pdata.get("hand", profile["hand"])
+            logger.debug(
+                "Pitcher %s: prior-season stats (current IP=%.1f, prior IP=%.1f)",
+                player_name, _parse_ip(season_data.get("stats", {}) or {}), prior_ip,
+            )
+
     if stats:
         era_str = stats.get("era", "")
         whip_str = stats.get("whip", "")
@@ -329,11 +376,6 @@ def get_pitcher_profile(player_name: str, player_id: int | None = None) -> dict:
         except (ValueError, TypeError):
             profile["whip"] = 1.35
 
-        ip_str = stats.get("inningsPitched", "0")
-        try:
-            ip = float(ip_str)
-        except (ValueError, TypeError):
-            ip = 0
         if ip >= 5:
             hr = int(stats.get("homeRuns", 0))
             bb = int(stats.get("baseOnBalls", 0)) + int(stats.get("hitByPitch", 0))
@@ -341,8 +383,16 @@ def get_pitcher_profile(player_name: str, player_id: int | None = None) -> dict:
             profile["fip"] = round((13 * hr + 3 * bb - 2 * k) / ip + 3.2, 2)
 
     # --- Statcast pitch mix + wOBA allowed by pitch type ---
-    start, end = _season_dates(CURRENT_SEASON)
+    # Extend to prior season when current-season IP is below the 20-IP threshold,
+    # matching the stat-source decision above for consistency.
+    current_ip = _parse_ip(season_data.get("stats", {}) or {})
+    start, end = _season_dates(_season)
     sc = _statcast_pitcher_cached(mlbam_id, start, end)
+    if current_ip < 20:
+        prior_start, _ = _season_dates(_season - 1)
+        sc_ext = _statcast_pitcher_cached(mlbam_id, prior_start, end)
+        if not sc_ext.empty and len(sc_ext) > len(sc):
+            sc = sc_ext
     if not sc.empty:
         total = len(sc)
         mix = {}
@@ -358,10 +408,10 @@ def get_pitcher_profile(player_name: str, player_id: int | None = None) -> dict:
             if not throws.empty:
                 profile["hand"] = throws.mode().iloc[0]
 
-        # wOBA allowed per pitch type from terminal events only
-        # woba_value is NaN for non-terminal pitches so groupby mean is terminal-event wOBA
+        # wOBA allowed per pitch type — terminal events only
         woba_col = "woba_value" if "woba_value" in sc.columns else "estimated_woba_using_speedangle"
-        woba_allowed = _woba_by_pitch_type(sc, woba_col)
+        terminal_p = sc[sc[woba_col].notna()] if woba_col in sc.columns else pd.DataFrame()
+        woba_allowed = _woba_by_pitch_type(terminal_p, woba_col)
         if woba_allowed:
             profile["pitch_woba_allowed"] = woba_allowed
 
@@ -406,8 +456,11 @@ def _team_id_for_name(team_name: str) -> int | None:
     return None
 
 
-def get_bullpen_profile(team_name: str) -> dict:
-    """Return aggregated bullpen ERA/FIP for the given team using MLB Stats API."""
+def get_bullpen_profile(team_name: str, season: int | None = None) -> dict:
+    """Return aggregated bullpen ERA/FIP for the given team using MLB Stats API.
+    Pass season= to fetch historical stats (defaults to CURRENT_SEASON).
+    """
+    _season = season or CURRENT_SEASON
     team_id = _team_id_for_name(team_name)
     if not team_id:
         return {"era": 4.50, "fip": 4.20}
@@ -415,7 +468,7 @@ def get_bullpen_profile(team_name: str) -> dict:
     try:
         result = statsapi.get("team_stats", {
             "teamId": team_id,
-            "season": CURRENT_SEASON,
+            "season": _season,
             "stats": "season",
             "group": "pitching",
         })

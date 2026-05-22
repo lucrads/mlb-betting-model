@@ -132,17 +132,3 @@ def _parse_side_lineup(side: dict) -> list[dict]:
     return ordered
 
 
-@lru_cache(maxsize=32)
-def get_roster(team_id: int) -> list[dict]:
-    """Fetch 40-man roster for a team (cached)."""
-    roster_data = statsapi.roster(team_id, rosterType="40Man")
-    players = []
-    for line in roster_data.strip().splitlines():
-        parts = line.strip().split()
-        if len(parts) >= 3:
-            players.append({
-                "name": " ".join(parts[2:]),
-                "number": parts[0],
-                "position": parts[1],
-            })
-    return players

@@ -83,26 +83,27 @@ def _fetch_open_meteo(lat: float, lon: float, game_date: str) -> tuple[float, fl
     Returns None on failure.
     """
     today = date_cls.today().isoformat()
+    _GAME_HOUR = 19  # ~7 PM local — typical first pitch
     try:
         if game_date >= today:
-            # Forecast endpoint — use current conditions
+            # Hourly forecast for game date — extract game-time hour
             resp = requests.get(
                 "https://api.open-meteo.com/v1/forecast",
                 params={
                     "latitude": lat,
                     "longitude": lon,
-                    "current": "wind_speed_10m,wind_direction_10m",
+                    "hourly": "wind_speed_10m,wind_direction_10m",
                     "wind_speed_unit": "mph",
-                    "forecast_days": 1,
+                    "timezone": "auto",
+                    "start_date": game_date,
+                    "end_date": game_date,
                 },
                 timeout=8,
             )
             resp.raise_for_status()
-            cur = resp.json().get("current", {})
-            speed = cur.get("wind_speed_10m")
-            direction = cur.get("wind_direction_10m")
+            hourly = resp.json().get("hourly", {})
         else:
-            # Archive endpoint — use ~6 PM local time (hour index 18)
+            # Archive endpoint for completed games
             resp = requests.get(
                 "https://archive-api.open-meteo.com/v1/archive",
                 params={
@@ -118,12 +119,12 @@ def _fetch_open_meteo(lat: float, lon: float, game_date: str) -> tuple[float, fl
             )
             resp.raise_for_status()
             hourly = resp.json().get("hourly", {})
-            speeds = hourly.get("wind_speed_10m", [])
-            directions = hourly.get("wind_direction_10m", [])
-            # Use hour 18 (6pm) if available, else midday
-            idx = 18 if len(speeds) > 18 else (len(speeds) // 2)
-            speed = speeds[idx] if speeds else None
-            direction = directions[idx] if directions else None
+
+        speeds = hourly.get("wind_speed_10m", [])
+        directions = hourly.get("wind_direction_10m", [])
+        idx = _GAME_HOUR if len(speeds) > _GAME_HOUR else max(len(speeds) - 1, 0)
+        speed = speeds[idx] if speeds else None
+        direction = directions[idx] if directions else None
 
         if speed is None or direction is None:
             return None
