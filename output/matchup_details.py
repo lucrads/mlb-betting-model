@@ -5,7 +5,8 @@ All ratios use pitcher-specific wOBA allowed as the denominator — no league co
 """
 
 import numpy as np
-from model.matchup import _pitcher_avg_woba_allowed
+from model.matchup import _pitcher_avg_woba_allowed, compute_at_bat_probs
+from model.run_expectancy import expected_runs_per_pa, woba_from_probs
 
 
 def compute_matchup_details(game: dict) -> dict:
@@ -49,6 +50,14 @@ def _batter_vs_pitcher(batter: dict, pitcher: dict) -> dict:
     combined = split_mult * matchup_factor
     combined = float(np.clip(combined, 0.50, 1.80))
 
+    # PhD-grade calculus scores from the multinomial-logit engine:
+    #  - probs        : softmax(η) at empty bases / 0 outs (matchup-only signal)
+    #  - e_runs_per_pa: RE24 expected run delta from leadoff state
+    #  - woba_matchup : linear-weights wOBA equivalent of the prob vector
+    probs = compute_at_bat_probs(batter, pitcher, outward_wind_mph=0.0)
+    e_runs = expected_runs_per_pa(probs)
+    woba_matchup = woba_from_probs(probs)
+
     return {
         "name": batter.get("name", ""),
         "hand": batter.get("hand", "R"),
@@ -60,7 +69,17 @@ def _batter_vs_pitcher(batter: dict, pitcher: dict) -> dict:
         "vs_pitcher_hand": pitcher_hand,
         "avg_ev": batter.get("avg_ev", 0.0),
         "hard_hit_rate": batter.get("hard_hit_rate", 0.0),
+        "barrel_rate": batter.get("barrel_rate", 0.0),
+        "mean_la": batter.get("mean_la"),
+        "sprint_speed": batter.get("sprint_speed", 0.0),
         "pitch_edges": _pitch_edges(pitch_mix, batter_woba_vs_pitch, batter_woba, pitcher),
+        # Calculus aggregations from the new engine:
+        "e_runs_per_pa": round(e_runs, 4),
+        "woba_matchup":  round(woba_matchup, 3),
+        "k_prob":   round(probs["K"],   3),
+        "bb_prob":  round(probs["BB"],  3),
+        "hr_prob":  round(probs["HR"],  3),
+        "hit_prob": round(probs["1B"] + probs["2B"] + probs["3B"] + probs["HR"], 3),
     }
 
 

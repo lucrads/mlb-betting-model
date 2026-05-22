@@ -34,6 +34,7 @@ from output.edge_calc import compute_edge, prob_to_american
 from output.matchup_details import compute_matchup_details
 from output.report import generate_report
 import config
+from config import PARK_HR_FACTORS
 
 logging.basicConfig(
     level=logging.INFO,
@@ -129,6 +130,12 @@ def enrich_game(game: dict) -> dict:
     game["wind"] = wind
     game["outward_wind_mph"] = wind["outward_wind_mph"]
     logger.info("Wind @ %s: %s", game.get("venue", "?"), wind["description"])
+
+    # Park HR factor (home team ballpark)
+    park_factor = PARK_HR_FACTORS.get(game["home_team"], 1.0)
+    game["park_hr_factor"] = park_factor
+    if abs(park_factor - 1.0) >= 0.02:
+        logger.info("Park factor (%s): %.2f HR", game["home_team"], park_factor)
 
     return game
 

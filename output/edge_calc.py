@@ -2,6 +2,7 @@
 Convert model win probabilities to fair odds and compute edge vs sportsbook lines.
 """
 
+import math
 from config import BET_EDGE_THRESHOLD, LEAN_EDGE_THRESHOLD
 
 
@@ -73,6 +74,9 @@ def compute_edge(simulation_result: dict, odds: dict | None) -> dict:
         "book_total": None,
         "book_over_ml": None,
         "book_under_ml": None,
+        "ou_pick": None,      # "Over" | "Under" | None
+        "ou_edge": None,      # the edge value for our O/U pick
+        "ou_rec": "PASS",     # "BET" | "LEAN" | "PASS"
         "recommendation": "PASS",
         "best_bets": [],
         "has_odds": False,
@@ -109,16 +113,19 @@ def compute_edge(simulation_result: dict, odds: dict | None) -> dict:
         result["home_edge"] = round(home_edge, 4)
         result["away_edge"] = round(away_edge, 4)
 
-    # Totals edge
+    # Totals edge — use actual simulated run distribution when available
     book_total = odds.get("total")
     if book_total is not None:
         over_prob_book = american_to_prob(odds.get("over_ml", -110))
         under_prob_book = american_to_prob(odds.get("under_ml", -110))
         fair_over, fair_under = remove_vig(over_prob_book, under_prob_book)
 
-        # Estimate model's over/under probability using normal distribution
-        # around avg_total with stddev ~3 runs
-        model_over_prob = _normal_over_prob(model_total, book_total, sigma=3.0)
+        run_dist = simulation_result.get("run_distribution")
+        if run_dist:
+            model_over_prob = _dist_over_prob(run_dist, book_total)
+        else:
+            sigma = simulation_result.get("run_total_std") or 3.0
+            model_over_prob = _normal_over_prob(model_total, book_total, sigma=sigma)
         model_under_prob = 1.0 - model_over_prob
 
         total_edge_over = model_over_prob - fair_over
@@ -126,7 +133,17 @@ def compute_edge(simulation_result: dict, odds: dict | None) -> dict:
         result["total_edge_over"] = round(total_edge_over, 4)
         result["total_edge_under"] = round(total_edge_under, 4)
 
-    # Determine best bets
+        # O/U pick: whichever side clears the LEAN threshold with the larger edge
+        over_e = result["total_edge_over"] or 0.0
+        under_e = result["total_edge_under"] or 0.0
+        best_ou_edge = max(over_e, under_e)
+        if best_ou_edge >= LEAN_EDGE_THRESHOLD:
+            pick = "Over" if over_e >= under_e else "Under"
+            result["ou_pick"] = pick
+            result["ou_edge"] = round(best_ou_edge, 4)
+            result["ou_rec"] = "BET" if best_ou_edge >= BET_EDGE_THRESHOLD else "LEAN"
+
+    # Determine best bets across all markets
     bets = []
     edges_to_check = [
         ("home_edge", "home_team", "moneyline"),
@@ -150,15 +167,25 @@ def compute_edge(simulation_result: dict, odds: dict | None) -> dict:
     return result
 
 
+def _dist_over_prob(run_distribution: dict, book_total: float) -> float:
+    """
+    P(total > book_total) from the simulated integer run-total distribution.
+    Uses the actual outcome counts rather than a parametric approximation.
+    Handles half-point lines correctly (e.g., 8.5 — no push possible).
+    JSON storage converts integer keys to strings, so we cast to int before comparing.
+    """
+    total_sims = sum(run_distribution.values())
+    if total_sims == 0:
+        return 0.5
+    over = sum(cnt for total, cnt in run_distribution.items() if int(total) > book_total)
+    return over / total_sims
+
+
 def _normal_over_prob(model_avg: float, book_line: float, sigma: float) -> float:
-    """
-    Estimate P(total > book_line) assuming total runs ~ Normal(model_avg, sigma).
-    """
-    import math
+    """Fallback: P(total > book_line) assuming Normal(model_avg, sigma)."""
     z = (book_line - model_avg) / sigma
     return 1.0 - _standard_normal_cdf(z)
 
 
 def _standard_normal_cdf(z: float) -> float:
-    import math
     return 0.5 * (1 + math.erf(z / math.sqrt(2)))

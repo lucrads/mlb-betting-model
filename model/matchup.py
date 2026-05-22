@@ -1,242 +1,381 @@
 """
-Per at-bat probability engine.
+Per at-bat probability engine — multinomial logit (softmax over log-odds).
 
-Takes a batter profile and pitcher profile and returns a probability
-distribution over at-bat outcomes: HR, BB, K, 1B, 2B, 3B, OUT.
+Mathematical framework
+----------------------
+For each plate appearance, the outcome probability vector p ∈ Δ^6
+(the 6-simplex over 7 outcomes Ω = {HR,BB,K,1B,2B,3B,OUT}) is computed as
 
-Steps:
-  1. Start with batter's base outcome rates (season/career stats)
-  2. Adjust for L/R split vs pitcher handedness (batter's wOBA vs this hand / overall wOBA)
-  3. Adjust for pitcher's pitch mix vs batter's pitch-type effectiveness
-     — geometric mean of batter/pitcher Statcast values; no league avg denominators
-  3a. Adjust for exit velocity matchup (hard contact vs soft contact allowed)
-  4. Adjust for wind (outward component raises/lowers HR and XBH rates)
-  5. Normalize to sum to 1.0
+    p_i = softmax_i(η)  =  exp(η_i) / Σ_j exp(η_j)
+
+with the log-probability vector η ∈ R^7 formed by an *additive composition*
+of per-factor contributions:
+
+    η_i = log(p_i^B)                         (batter log-probability baseline)
+        + s_pitch · γ_i^pitch                (pitcher-quality contribution)
+        + s_split · γ_i^split                (L/R split contribution)
+        + s_mix   · γ_i^mix                  (pitch-mix matchup contribution)
+        + s_ev    · γ_i^ev                   (exit-velocity contribution)
+        + s_wind  · γ_i^wind                 (environmental contribution)
+
+With η_i = log(p_i^B) and no shifts, softmax(η) recovers p^B exactly.
+Each shift η_i ← η_i + Δ_i multiplies the unnormalised mass by exp(Δ_i)
+before the softmax renormalises — i.e. an *exponential-family
+multiplicative reweighting* that always returns a valid probability
+distribution.
+
+Each scalar signal s_• ∈ R is a *log-ratio* of relevant Statcast/season
+quantities — natively in log space. Each γ_i^• ∈ R is a fixed
+sensitivity vector that redistributes probability mass across outcomes.
+
+This is the canonical multinomial-logit / Plackett-Luce formulation
+and is equivalent to Bill James' log-5 Bayesian update for a single
+outcome (γ_i an indicator vector, signal = log(p_p)−log(p_lg)).
+Compared to the previous multiplicative cascade ( prob × factor × (2−factor) ... )
+this approach:
+
+  1. Stays on the probability simplex by construction (softmax).
+  2. Is invariant to outcome ordering and identity (no ad-hoc
+     (2−factor) trick for "negative" outcomes).
+  3. Composes Bayesian-correctly: independent evidence sources add
+     in log space (multiplicative odds-ratio composition).
+  4. Has a closed-form Jacobian  ∂p_i/∂η_j = p_i(δ_ij − p_j),
+     enabling gradient-based fitting in future work.
+
+Per at-bat expected-runs contribution (calculus aggregation)
+------------------------------------------------------------
+For state s = (b1, b2, b3, outs) and matchup (B, P):
+
+    E[ΔR | s, B, P]  =  Σ_i  p_i(B, P) · [ r_i(s) + RE(s'_i) − RE(s) ]
+
+where r_i(s) is the immediate runs from outcome i and RE(·) is the
+24-state run-expectancy matrix (see model.run_expectancy). The game's
+expected total is the iterated sum of E[ΔR] along the simulated
+state trajectory — a discrete Bellman recursion.
 """
 
 import math
 import numpy as np
-from config import FIP_WOBA_INTERCEPT, FIP_WOBA_SLOPE
+from config import (
+    FIP_WOBA_INTERCEPT, FIP_WOBA_SLOPE,
+    LEAGUE_AVG_BARREL_RATE, LEAGUE_AVG_MEAN_LA, LEAGUE_AVG_SPRINT_SPEED,
+)
 
 OUTCOMES = ["HR", "BB", "K", "1B", "2B", "3B", "OUT"]
 POSITIVE_OUTCOMES = {"HR", "BB", "1B", "2B", "3B"}
 NEGATIVE_OUTCOMES = {"K", "OUT"}
 
-# Neutral outcome rates used only when a batter has zero data
+# Neutral outcome rates when a batter has zero data
 _NEUTRAL_RATES = {
     "HR": 0.030, "BB": 0.085, "K": 0.225,
     "1B": 0.145, "2B": 0.050, "3B": 0.005, "OUT": 0.460,
 }
 
+# Sensitivity vectors γ_i^• : how each outcome's log-odds responds to a
+# unit increase in the corresponding scalar signal. Calibrated so the
+# implied probability changes match historical sabermetric elasticities.
+#
+# Constant shifts in γ are absorbed by softmax (softmax(η+c)=softmax(η)),
+# so only the *differences* between outcomes matter; values are written
+# in a centered form for readability.
+_PITCH_QUALITY_GAMMA = {
+    "HR":  +1.25, "2B": +0.90, "3B": +0.55, "1B": +0.65,
+    "BB":  +0.45, "K": -1.20, "OUT": -0.50,
+}
+_SPLIT_GAMMA = {
+    "HR":  +1.10, "2B": +0.80, "3B": +0.55, "1B": +0.55,
+    "BB":  +0.30, "K": -1.05, "OUT": -0.55,
+}
+_MIX_GAMMA = {
+    "HR":  +1.05, "2B": +0.75, "3B": +0.50, "1B": +0.55,
+    "BB":  +0.20, "K": -0.90, "OUT": -0.45,
+}
+_EV_GAMMA = {  # Exit velocity moves only contact-quality outcomes
+    "HR":  +1.55, "2B": +0.65, "3B": +0.30, "1B":  0.00,
+    "BB":   0.00, "K":   0.00, "OUT": -0.40,
+}
+_WIND_GAMMA = {  # Wind moves only fly-ball outcomes
+    "HR":  +1.00, "2B": +0.25, "3B": +0.15, "1B":  0.00,
+    "BB":   0.00, "K":   0.00, "OUT": -0.20,
+}
+_BARREL_GAMMA = {  # High barrel rate → extreme fly-ball power
+    "HR":  +1.60, "2B": +0.55, "3B": +0.10, "1B": -0.15,
+    "BB":   0.00, "K":   0.00, "OUT": -0.60,
+}
+_LA_GAMMA = {  # High mean launch angle → more fly balls → HR/2B up, groundouts down
+    "HR":  +1.20, "2B": +0.70, "3B": +0.30, "1B": -0.30,
+    "BB":   0.00, "K":   0.00, "OUT": -0.40,
+}
+_SPRINT_GAMMA = {  # Fast runner → more singles, more triples, fewer outs on close plays
+    "HR":   0.00, "2B": +0.15, "3B": +0.80, "1B": +0.55,
+    "BB":   0.00, "K":   0.00, "OUT": -0.45,
+}
+_PARK_GAMMA = {  # Hitter-friendly park → more HR (and marginally more 2B)
+    "HR":  +1.00, "2B": +0.15, "3B":  0.00, "1B":  0.00,
+    "BB":   0.00, "K":   0.00, "OUT": -0.20,
+}
+
+# Magnitude clamp on each scalar signal (log-odds units).
+# 0.35 ≈ ratio of 1.42×; 0.20 ≈ 1.22×.  Hard physical bounds, not soft priors.
+_S_PITCH_CLAMP  = 0.35
+_S_SPLIT_CLAMP  = 0.30
+_S_MIX_CLAMP    = 0.30
+_S_EV_CLAMP     = 0.18
+_S_WIND_CLAMP   = 0.30
+_S_BARREL_CLAMP = 0.25
+_S_LA_CLAMP     = 0.20
+_S_SPRINT_CLAMP = 0.18
+_S_PARK_CLAMP   = 0.22
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
 def compute_at_bat_probs(
     batter: dict,
     pitcher: dict,
     outward_wind_mph: float = 0.0,
+    park_hr_factor: float = 1.0,
 ) -> dict[str, float]:
     """
-    Returns a dict {outcome: probability} for a single plate appearance.
-    All adjustments use player-specific data only; empty data fields produce
-    no adjustment (multiplier stays at 1.0).
+    Multinomial-logit probability vector for a single plate appearance.
+
+    p_i = softmax_i( logit(p_i^B) + Σ_• s_• · γ_i^• )
+
+    Every adjustment is an additive log-odds shift, then softmax
+    normalises the result onto the simplex.
+
+    Signal layers (in order):
+      pitch_quality — pitcher wOBA allowed vs batter wOBA
+      split         — batter L/R platoon advantage
+      mix           — pitch-type matchup (geometric mean Statcast wOBA)
+      ev            — exit velocity ratio (pitcher allows vs batter produces)
+      barrel        — batter barrel rate vs league average
+      la            — batter mean launch angle vs league average
+      sprint        — batter sprint speed vs league average
+      wind          — outward wind component
+      park          — ballpark HR factor
     """
-    rates = dict(batter["outcome_rates"]) if batter.get("outcome_rates") else dict(_NEUTRAL_RATES)
+    rates = batter.get("outcome_rates") or _NEUTRAL_RATES
+    eta = {o: _logp(rates.get(o, _NEUTRAL_RATES[o])) for o in OUTCOMES}
 
-    rates = _apply_split_adjustment(rates, batter, pitcher)
-    rates = _apply_pitch_mix_adjustment(rates, batter, pitcher)
-    rates = _apply_exit_velo_adjustment(rates, batter, pitcher)
-    rates = _apply_wind_adjustment(rates, outward_wind_mph)
-    rates = _normalize(rates)
+    eta = _shift(eta, _pitch_quality_signal(batter, pitcher), _PITCH_QUALITY_GAMMA)
+    eta = _shift(eta, _split_signal(batter, pitcher),         _SPLIT_GAMMA)
+    eta = _shift(eta, _mix_signal(batter, pitcher),           _MIX_GAMMA)
+    eta = _shift(eta, _ev_signal(batter, pitcher),            _EV_GAMMA)
+    eta = _shift(eta, _barrel_signal(batter),                 _BARREL_GAMMA)
+    eta = _shift(eta, _la_signal(batter),                     _LA_GAMMA)
+    eta = _shift(eta, _sprint_signal(batter),                 _SPRINT_GAMMA)
+    eta = _shift(eta, _wind_signal(outward_wind_mph),         _WIND_GAMMA)
+    eta = _shift(eta, _park_signal(park_hr_factor),           _PARK_GAMMA)
 
-    return rates
-
-
-def _apply_split_adjustment(rates: dict, batter: dict, pitcher: dict) -> dict:
-    """
-    Scale outcomes by batter's wOBA vs this pitcher's hand relative to
-    batter's overall wOBA. Skips adjustment if batter has no wOBA data.
-    """
-    batter_woba = batter.get("woba") or 0.0
-    if batter_woba <= 0:
-        return rates  # No batter data — no adjustment
-
-    pitcher_hand = pitcher.get("hand", "R")
-    woba_vs_hand = batter.get("woba_vs_hand", {})
-    # Fall back to overall wOBA if no split data for this hand (ratio = 1.0)
-    woba_vs_this_hand = woba_vs_hand.get(pitcher_hand, batter_woba)
-
-    split_multiplier = woba_vs_this_hand / batter_woba
-    split_multiplier = float(np.clip(split_multiplier, 0.60, 1.60))
-
-    adjusted = {}
-    for outcome, prob in rates.items():
-        if outcome in POSITIVE_OUTCOMES:
-            adjusted[outcome] = prob * split_multiplier
-        elif outcome in NEGATIVE_OUTCOMES:
-            adjusted[outcome] = prob * (2.0 - split_multiplier)
-        else:
-            adjusted[outcome] = prob
-
-    return adjusted
-
-
-def _apply_pitch_mix_adjustment(rates: dict, batter: dict, pitcher: dict) -> dict:
-    """
-    Scale outcomes using the geometric mean of batter and pitcher Statcast values
-    per pitch type, normalized by the batter's overall wOBA.
-
-    matchup_factor = Σ(pitch_pct × sqrt(batter_woba_vs_PT × pitcher_woba_allowed_PT))
-                     ────────────────────────────────────────────────────────────────
-                                      batter_overall_woba
-
-    Semantics:
-      - factor = 1.0 when the geometric mean of the matchup equals batter's average
-        production (neutral — neither batter nor pitcher has an edge)
-      - factor < 1.0 when pitcher dominates (allows little; their pitch suppresses batter)
-      - factor > 1.0 when batter has an edge on this pitcher's primary pitches
-
-    Both batter and pitcher values come entirely from player Statcast data.
-    Falls back to player-level averages (never league constants) when a
-    specific pitch type is missing from either player's Statcast data.
-    """
-    pitch_mix = pitcher.get("pitch_mix", {})
-    if not pitch_mix:
-        return rates
-
-    batter_woba_vs_pitch = batter.get("woba_vs_pitch", {})
-    pitcher_woba_allowed = pitcher.get("pitch_woba_allowed", {})
-    batter_overall_woba = batter.get("woba") or 0.0
-    pitcher_avg_woba = _pitcher_avg_woba_allowed(pitcher)
-
-    if pitcher_avg_woba <= 0:
-        return rates
-
-    # Normalizer: batter's overall wOBA (or pitcher avg if batter has no data)
-    normalizer = batter_overall_woba if batter_overall_woba > 0 else pitcher_avg_woba
-
-    geo_sum = 0.0
-    total_weight = 0.0
-
-    for pitch_type, pct in pitch_mix.items():
-        if pct <= 0:
-            continue
-        pitcher_woba_pt = pitcher_woba_allowed.get(pitch_type, pitcher_avg_woba)
-        if pitcher_woba_pt <= 0:
-            continue
-        # Batter's wOBA vs this pitch type; fall back to overall wOBA if missing
-        batter_woba_pt = batter_woba_vs_pitch.get(pitch_type) or batter_overall_woba or pitcher_avg_woba
-
-        # Geometric mean of both players' performance on this pitch type
-        geo_mean_pt = np.sqrt(batter_woba_pt * pitcher_woba_pt)
-        geo_sum += pct * geo_mean_pt
-        total_weight += pct
-
-    if total_weight <= 0:
-        return rates
-
-    matchup_factor = (geo_sum / total_weight) / normalizer
-    matchup_factor = float(np.clip(matchup_factor, 0.60, 1.60))
-
-    adjusted = {}
-    for outcome, prob in rates.items():
-        if outcome in POSITIVE_OUTCOMES:
-            adjusted[outcome] = prob * matchup_factor
-        elif outcome in NEGATIVE_OUTCOMES:
-            adjusted[outcome] = prob * (2.0 - matchup_factor)
-        else:
-            adjusted[outcome] = prob
-
-    return adjusted
-
-
-def _apply_exit_velo_adjustment(rates: dict, batter: dict, pitcher: dict) -> dict:
-    """
-    Scale HR and XBH rates based on the exit velocity matchup.
-
-    contact_factor = sqrt(pitcher_avg_ev_allowed / batter_avg_ev)
-      < 1.0 when pitcher suppresses EV (allows softer contact than batter generates)
-      > 1.0 when pitcher allows harder contact than batter typically generates
-
-    HR is highly sensitive to EV (needs ~95+ to carry); XBH is moderately sensitive.
-    Only applied when both players have sufficient Statcast EV data.
-    """
-    batter_ev = batter.get("avg_ev") or 0.0
-    pitcher_ev = pitcher.get("avg_ev_allowed") or 0.0
-
-    if batter_ev < 75 or pitcher_ev < 75:
-        return rates  # Insufficient data — no adjustment
-
-    contact_factor = math.sqrt(pitcher_ev / batter_ev)
-    # HR is ~2.5× more sensitive than XBH to exit velo changes
-    hr_mult  = float(np.clip(contact_factor ** 2.5, 0.65, 1.45))
-    xbh_mult = float(np.clip(contact_factor,        0.88, 1.12))
-
-    adjusted = {}
-    for outcome, prob in rates.items():
-        if outcome == "HR":
-            adjusted[outcome] = prob * hr_mult
-        elif outcome in ("2B", "3B"):
-            adjusted[outcome] = prob * xbh_mult
-        else:
-            adjusted[outcome] = prob
-    return adjusted
-
-
-def _apply_wind_adjustment(rates: dict, outward_wind_mph: float) -> dict:
-    """
-    Scale HR and XBH rates based on how much wind is blowing toward the outfield.
-
-    outward_wind_mph > 0: tailwind (helps fly balls carry) → more HR/XBH
-    outward_wind_mph < 0: headwind (suppresses fly balls) → fewer HR/XBH
-
-    Calibrated at ~0.7% HR change per 1 mph outward component.
-    """
-    if abs(outward_wind_mph) < 0.5:
-        return rates  # Negligible wind — no adjustment
-
-    hr_wind_mult  = float(np.clip(1.0 + outward_wind_mph * 0.007, 0.72, 1.32))
-    xbh_wind_mult = float(np.clip(1.0 + outward_wind_mph * 0.002, 0.90, 1.10))
-
-    adjusted = {}
-    for outcome, prob in rates.items():
-        if outcome == "HR":
-            adjusted[outcome] = prob * hr_wind_mult
-        elif outcome in ("2B", "3B"):
-            adjusted[outcome] = prob * xbh_wind_mult
-        else:
-            adjusted[outcome] = prob
-    return adjusted
-
-
-def _pitcher_avg_woba_allowed(pitcher: dict) -> float:
-    """
-    Pitcher's average wOBA allowed across all pitch types with Statcast data.
-    Falls back to FIP-based estimate if no pitch-level data available.
-    Uses only this pitcher's own data — no league constants.
-    """
-    woba_by_pitch = pitcher.get("pitch_woba_allowed", {})
-    if woba_by_pitch:
-        vals = [v for v in woba_by_pitch.values() if v > 0]
-        if vals:
-            return sum(vals) / len(vals)
-    # Use pre-computed overall if available (set during profile build)
-    overall = pitcher.get("woba_allowed_overall")
-    if overall:
-        return overall
-    # Last resort: derive from pitcher's own FIP
-    fip = pitcher.get("fip", 4.20)
-    return max(0.180, min(0.420, FIP_WOBA_INTERCEPT + fip * FIP_WOBA_SLOPE))
-
-
-def _normalize(rates: dict) -> dict[str, float]:
-    total = sum(rates.values())
-    if total <= 0:
-        n = len(rates)
-        return {k: 1.0 / n for k in rates}
-    return {k: max(v / total, 0.0) for k, v in rates.items()}
+    return _softmax(eta)
 
 
 def sample_outcome(probs: dict[str, float]) -> str:
-    """Sample a single at-bat outcome from the probability distribution."""
+    """Sample one at-bat outcome from the categorical distribution."""
     outcomes = list(probs.keys())
     weights = [probs[o] for o in outcomes]
     return np.random.choice(outcomes, p=weights)
+
+
+# ---------------------------------------------------------------------------
+# Scalar signal functions  s_• ∈ R   (each in log-odds units, then clamped)
+# ---------------------------------------------------------------------------
+
+def _pitch_quality_signal(batter: dict, pitcher: dict) -> float:
+    """
+    s_pitch  =  log( pitcher_woba_allowed / batter_woba )
+
+      > 0 : pitcher allows MORE than the batter normally produces (batter edge)
+      < 0 : pitcher dominates the batter (pitcher edge)
+      = 0 : neutral matchup
+    """
+    bw = batter.get("woba") or 0.0
+    if bw <= 0:
+        return 0.0
+    pw = _pitcher_avg_woba_allowed(pitcher)
+    if pw <= 0:
+        return 0.0
+    return float(np.clip(math.log(pw / bw), -_S_PITCH_CLAMP, _S_PITCH_CLAMP))
+
+
+def _split_signal(batter: dict, pitcher: dict) -> float:
+    """
+    s_split  =  log( batter_woba_vs_hand / batter_overall_woba )
+    """
+    bw = batter.get("woba") or 0.0
+    if bw <= 0:
+        return 0.0
+    hand = pitcher.get("hand", "R")
+    wh = (batter.get("woba_vs_hand") or {}).get(hand)
+    if not wh or wh <= 0:
+        return 0.0
+    return float(np.clip(math.log(wh / bw), -_S_SPLIT_CLAMP, _S_SPLIT_CLAMP))
+
+
+def _mix_signal(batter: dict, pitcher: dict) -> float:
+    """
+    Pitch-mix signal — log of pitch-mix-weighted geometric mean of
+    per-pitch wOBAs, normalised by the batter's overall wOBA.
+
+        s_mix = log( Σ_p w_p · sqrt(batter_woba_vs_p · pitcher_woba_allowed_p)
+                     / batter_overall_woba )
+
+    Geometric mean is the maximum-likelihood combination of two
+    independent log-normal signals — i.e. the canonical Bayesian
+    fusion of batter and pitcher pitch-type performance.
+    """
+    pitch_mix = pitcher.get("pitch_mix") or {}
+    if not pitch_mix:
+        return 0.0
+
+    bvp = batter.get("woba_vs_pitch") or {}
+    pwa = pitcher.get("pitch_woba_allowed") or {}
+    bw = batter.get("woba") or 0.0
+    pw = _pitcher_avg_woba_allowed(pitcher)
+    if pw <= 0:
+        return 0.0
+    normalizer = bw if bw > 0 else pw
+
+    geo_sum = 0.0
+    total = 0.0
+    for pt, pct in pitch_mix.items():
+        if pct <= 0:
+            continue
+        ppt = pwa.get(pt, pw)
+        if ppt <= 0:
+            continue
+        bpt = bvp.get(pt) or bw or pw
+        geo_sum += pct * math.sqrt(bpt * ppt)
+        total += pct
+    if total <= 0:
+        return 0.0
+
+    return float(np.clip(math.log((geo_sum / total) / normalizer),
+                         -_S_MIX_CLAMP, _S_MIX_CLAMP))
+
+
+def _ev_signal(batter: dict, pitcher: dict) -> float:
+    """
+    s_ev  =  0.5 · log( pitcher_avg_ev_allowed / batter_avg_ev )
+
+    Negative when pitcher induces softer-than-typical contact for this
+    hitter (penalises power outcomes). Requires ≥ 75 mph both sides.
+    """
+    bev = batter.get("avg_ev") or 0.0
+    pev = pitcher.get("avg_ev_allowed") or 0.0
+    if bev < 75 or pev < 75:
+        return 0.0
+    return float(np.clip(0.5 * math.log(pev / bev),
+                         -_S_EV_CLAMP, _S_EV_CLAMP))
+
+
+def _wind_signal(outward_wind_mph: float) -> float:
+    """
+    s_wind  =  0.012 · outward_wind_mph   (linear in low-wind regime)
+
+    Calibrated so 10 mph outward ≈ +12% odds shift on HR.
+    """
+    if abs(outward_wind_mph) < 0.5:
+        return 0.0
+    return float(np.clip(outward_wind_mph * 0.012,
+                         -_S_WIND_CLAMP, _S_WIND_CLAMP))
+
+
+def _barrel_signal(batter: dict) -> float:
+    """
+    s_barrel = log( batter_barrel_rate / LEAGUE_AVG_BARREL_RATE )
+
+    Barrel rate (EV ≥ 98 mph AND LA 26–30°) captures the joint distribution
+    of power and swing path that drives HR probability beyond what avg EV alone
+    measures.  Positive when batter barrels at above-league rate.
+    """
+    br = batter.get("barrel_rate") or 0.0
+    if br <= 0:
+        return 0.0
+    return float(np.clip(math.log(br / LEAGUE_AVG_BARREL_RATE),
+                         -_S_BARREL_CLAMP, _S_BARREL_CLAMP))
+
+
+def _la_signal(batter: dict) -> float:
+    """
+    s_la = (mean_la - LEAGUE_AVG_MEAN_LA) * 0.015
+
+    Launch angle characterises swing path: high LA → fly-ball hitter (HR/2B up);
+    low / negative LA → ground-ball hitter (1B up, HR down).  Uses a linear
+    deviation rather than log ratio because LA can be negative.
+    0.015 scaling: ±10° deviation ≈ ±0.15 log-odds (roughly one clamp unit).
+    """
+    mla = batter.get("mean_la")
+    if mla is None:
+        return 0.0
+    return float(np.clip((mla - LEAGUE_AVG_MEAN_LA) * 0.015,
+                         -_S_LA_CLAMP, _S_LA_CLAMP))
+
+
+def _sprint_signal(batter: dict) -> float:
+    """
+    s_sprint = log( sprint_speed / LEAGUE_AVG_SPRINT_SPEED )
+
+    Faster runners beat out more infield singles and take extra bases on hits,
+    converting some would-be outs into singles and some singles into triples.
+    Zero when no sprint-speed data is available (neutral).
+    """
+    spd = batter.get("sprint_speed") or 0.0
+    if spd < 18:  # below plausible human minimum — treat as missing
+        return 0.0
+    return float(np.clip(math.log(spd / LEAGUE_AVG_SPRINT_SPEED),
+                         -_S_SPRINT_CLAMP, _S_SPRINT_CLAMP))
+
+
+def _park_signal(park_hr_factor: float) -> float:
+    """
+    s_park = log( park_hr_factor )
+
+    Park factor relative to 1.0 (neutral).  Applies a consistent HR-friendly /
+    pitcher-friendly environment shift independent of the batter/pitcher matchup.
+    """
+    if abs(park_hr_factor - 1.0) < 0.005:
+        return 0.0
+    return float(np.clip(math.log(park_hr_factor),
+                         -_S_PARK_CLAMP, _S_PARK_CLAMP))
+
+
+# ---------------------------------------------------------------------------
+# Log-odds arithmetic
+# ---------------------------------------------------------------------------
+
+def _logp(p: float) -> float:
+    """Numerically safe log of a probability."""
+    return math.log(max(p, 1e-9))
+
+
+def _shift(eta: dict, signal: float, gamma: dict) -> dict:
+    """Apply  η_i ← η_i + signal · γ_i  for every outcome."""
+    if signal == 0.0:
+        return eta
+    return {o: eta[o] + signal * gamma[o] for o in OUTCOMES}
+
+
+def _softmax(eta: dict) -> dict[str, float]:
+    """Numerically stable softmax over outcomes."""
+    m = max(eta.values())
+    exps = {o: math.exp(v - m) for o, v in eta.items()}
+    z = sum(exps.values())
+    return {o: v / z for o, v in exps.items()}
+
+
+def _pitcher_avg_woba_allowed(pitcher: dict) -> float:
+    """Pitcher's avg wOBA allowed — player-specific, no league constants."""
+    by_pitch = pitcher.get("pitch_woba_allowed") or {}
+    if by_pitch:
+        vals = [v for v in by_pitch.values() if v > 0]
+        if vals:
+            return sum(vals) / len(vals)
+    overall = pitcher.get("woba_allowed_overall")
+    if overall:
+        return overall
+    fip = pitcher.get("fip", 4.20)
+    return max(0.180, min(0.420, FIP_WOBA_INTERCEPT + fip * FIP_WOBA_SLOPE))

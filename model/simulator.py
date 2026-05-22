@@ -1,30 +1,44 @@
 """
-Single game simulation.
+Single-game simulation.
 
-Models a full 9-inning game (plus extra innings if tied) by:
-  - Cycling through lineups batter by batter
-  - Computing per at-bat probabilities via the matchup engine
-  - Applying base running rules after each event
-  - Switching from starter to bullpen profile after starter limit
+Threads an `rng` object — either a numpy Generator-backed antithetic
+facade from monte_carlo.py or, for stand-alone use, falls back to the
+global numpy random state. All stochastic choices in this module flow
+through `rng.choice(items, p)` and `rng.random()`, which makes the
+simulator deterministic given the rng state and enables antithetic
+variates / common-random-numbers variance reduction at the aggregator.
 """
 
 import numpy as np
-from model.matchup import compute_at_bat_probs, sample_outcome, _pitcher_avg_woba_allowed
-from config import BASE_RUNNING, STARTER_INNINGS_LIMIT, STARTER_BATTERS_FACED_LIMIT, FIP_WOBA_INTERCEPT, FIP_WOBA_SLOPE
+from model.matchup import compute_at_bat_probs
+from config import BASE_RUNNING, STARTER_INNINGS_LIMIT, STARTER_BATTERS_FACED_LIMIT, FIP_WOBA_INTERCEPT, FIP_WOBA_SLOPE  # noqa: F401
 
 
-def simulate_game(game: dict, batter_profiles: dict, pitcher_profiles: dict) -> tuple[int, int]:
+class _GlobalRng:
+    """Fallback RNG facade that calls numpy's global random state."""
+
+    @staticmethod
+    def random() -> float:
+        return float(np.random.random())
+
+    @staticmethod
+    def choice(items, p):
+        return np.random.choice(items, p=p)
+
+
+_GLOBAL_RNG = _GlobalRng()
+
+
+def simulate_game(game: dict, rng=None) -> tuple[int, int]:
     """
-    Simulate one full game.
+    Simulate one full game and return (home_runs, away_runs).
 
-    Args:
-        game: game dict from fetcher (teams, lineups, pitchers)
-        batter_profiles: {player_name: profile_dict}
-        pitcher_profiles: {player_name: profile_dict}
-
-    Returns:
-        (home_runs, away_runs)
+    `rng`: optional object exposing `random()` and `choice(items, p)`.
+           When None, falls back to numpy's global random state.
     """
+    if rng is None:
+        rng = _GLOBAL_RNG
+
     away_lineup = game["away_lineup_profiles"]
     home_lineup = game["home_lineup_profiles"]
     away_starter = game["away_pitcher_profile"]
@@ -35,33 +49,41 @@ def simulate_game(game: dict, batter_profiles: dict, pitcher_profiles: dict) -> 
     home_runs = 0
     away_runs = 0
     outward_wind_mph = game.get("outward_wind_mph", 0.0)
+    park_hr_factor   = game.get("park_hr_factor", 1.0)
 
-    # Lineup position state persists across innings
     away_batter_idx = 0
     home_batter_idx = 0
+    away_tbf = 0  # total batters faced by away starter (for TBF limit)
+    home_tbf = 0
 
     inning = 1
     max_innings = 15  # safety cap for extra innings
 
     while inning <= max_innings:
-        # Top of inning: away team bats vs home pitcher
-        away_pitcher = _get_active_pitcher(away_starter, away_bullpen, inning)
-        runs, away_batter_idx = _simulate_half_inning(
-            away_lineup, away_batter_idx, away_pitcher, outward_wind_mph=outward_wind_mph,
+        away_pitcher = _get_active_pitcher(away_starter, away_bullpen, inning, away_tbf)
+        runs, away_batter_idx, tbf = _simulate_half_inning(
+            away_lineup, away_batter_idx, away_pitcher,
+            rng=rng,
+            outward_wind_mph=outward_wind_mph,
+            park_hr_factor=park_hr_factor,
         )
         away_runs += runs
+        if away_pitcher is away_starter:
+            away_tbf += tbf
 
-        # Bottom of inning: home team bats vs away pitcher
-        home_pitcher = _get_active_pitcher(home_starter, home_bullpen, inning)
-        runs, home_batter_idx = _simulate_half_inning(
+        home_pitcher = _get_active_pitcher(home_starter, home_bullpen, inning, home_tbf)
+        runs, home_batter_idx, tbf = _simulate_half_inning(
             home_lineup, home_batter_idx, home_pitcher,
+            rng=rng,
             walkoff=(inning >= 9),
             runs_needed=(away_runs - home_runs) if inning >= 9 else 999,
             outward_wind_mph=outward_wind_mph,
+            park_hr_factor=park_hr_factor,
         )
         home_runs += runs
+        if home_pitcher is home_starter:
+            home_tbf += tbf
 
-        # Check for game end after 9+ complete innings
         if inning >= 9 and home_runs != away_runs:
             break
 
@@ -70,8 +92,8 @@ def simulate_game(game: dict, batter_profiles: dict, pitcher_profiles: dict) -> 
     return home_runs, away_runs
 
 
-def _get_active_pitcher(starter: dict, bullpen: dict, inning: int) -> dict:
-    if inning > STARTER_INNINGS_LIMIT:
+def _get_active_pitcher(starter: dict, bullpen: dict, inning: int, batters_faced: int) -> dict:
+    if inning > STARTER_INNINGS_LIMIT or batters_faced >= STARTER_BATTERS_FACED_LIMIT:
         return bullpen
     return starter
 
@@ -80,134 +102,122 @@ def _simulate_half_inning(
     lineup: list[dict],
     batter_idx: int,
     pitcher: dict,
+    rng,
     walkoff: bool = False,
     runs_needed: int = 999,
     outward_wind_mph: float = 0.0,
-) -> tuple[int, int]:
-    """
-    Simulate one half-inning. Returns (runs_scored, next_batter_idx).
-
-    runs_needed: in walkoff situations, stop once cumulative runs exceed this
-                 (i.e. home team takes the lead).
-    """
+    park_hr_factor: float = 1.0,
+) -> tuple[int, int, int]:
+    """Simulate one half-inning. Returns (runs_scored, next_batter_idx, batters_faced)."""
     outs = 0
     runs = 0
+    batters_faced = 0
     bases = [False, False, False]  # 1B, 2B, 3B
 
     lineup_size = len(lineup)
     if lineup_size == 0:
-        return 0, batter_idx
+        return 0, batter_idx, 0
 
     current_idx = batter_idx
-
     while outs < 3:
         batter = lineup[current_idx % lineup_size]
-        probs = compute_at_bat_probs(batter, pitcher, outward_wind_mph=outward_wind_mph)
-        outcome = sample_outcome(probs)
-
-        runs_scored, bases, outs = _apply_outcome(outcome, bases, outs)
+        probs = compute_at_bat_probs(
+            batter, pitcher,
+            outward_wind_mph=outward_wind_mph,
+            park_hr_factor=park_hr_factor,
+        )
+        outcome = _sample_outcome(probs, rng)
+        runs_scored, bases, outs = _apply_outcome(outcome, bases, outs, rng)
         runs += runs_scored
-
         current_idx += 1
-
+        batters_faced += 1
         if walkoff and runs > runs_needed:
             break
 
-    return runs, current_idx % lineup_size
+    return runs, current_idx % lineup_size, batters_faced
+
+
+def _sample_outcome(probs: dict[str, float], rng) -> str:
+    outcomes = list(probs.keys())
+    weights = [probs[o] for o in outcomes]
+    return rng.choice(outcomes, p=weights)
 
 
 def _apply_outcome(
     outcome: str,
     bases: list[bool],
     outs: int,
+    rng,
 ) -> tuple[int, list[bool], int]:
-    """
-    Apply a batting outcome to the base state.
-
-    Returns: (runs_scored, new_bases, new_outs)
-    Bases: [1B, 2B, 3B] as booleans
-    """
+    """Apply a batting outcome to the base state. Returns (runs_scored, new_bases, new_outs)."""
     b1, b2, b3 = bases
     runs = 0
     new_outs = outs
-    rng = BASE_RUNNING
+    pr = BASE_RUNNING
 
     if outcome == "HR":
         runs = 1 + sum([b1, b2, b3])
         return runs, [False, False, False], new_outs
 
-    elif outcome == "3B":
+    if outcome == "3B":
         runs = sum([b1, b2, b3])
         return runs, [False, False, True], new_outs
 
-    elif outcome == "2B":
-        # Runners on 2nd/3rd score; runner on 1st scores ~30% or stops at 3rd
+    if outcome == "2B":
         runs += int(b2) + int(b3)
         runner_1b_scored = False
-        if b1:
-            if np.random.random() < rng["double_runner_1b_scores_prob"]:
-                runs += 1
-                runner_1b_scored = True
-        # Batter on 2nd; runner from 1st on 3rd if didn't score
+        if b1 and rng.random() < pr["double_runner_1b_scores_prob"]:
+            runs += 1
+            runner_1b_scored = True
         new_b3 = b1 and not runner_1b_scored
         return runs, [False, True, new_b3], new_outs
 
-    elif outcome == "1B":
-        # Runner on 3rd scores
+    if outcome == "1B":
         if b3:
             runs += 1
-        # Runner on 2nd: scores ~75%, else stops at 3rd
         new_b3 = False
         if b2:
-            if np.random.random() < rng["single_runner_2b_scores_prob"]:
+            if rng.random() < pr["single_runner_2b_scores_prob"]:
                 runs += 1
             else:
-                new_b3 = True
-        # Runner on 1st: takes extra base ~30%
-        new_b2 = bool(b1)
-        new_b1_extra = False
+                new_b3 = True  # runner from 2B stops at 3B
+        new_b2 = False
         if b1:
-            if np.random.random() < rng["single_runner_1b_to_3b_prob"]:
-                new_b3 = True
-                new_b2 = False
-        # Batter is on 1st
+            if new_b3:
+                # 3B already occupied — runner from 1B can only reach 2B
+                new_b2 = True
+            elif rng.random() < pr["single_runner_1b_to_3b_prob"]:
+                new_b3 = True   # runner from 1B takes extra base to 3B
+            else:
+                new_b2 = True   # runner from 1B stops at 2B
         return runs, [True, new_b2, new_b3], new_outs
 
-    elif outcome == "BB":
-        # Force advances only
+    if outcome == "BB":
         if b1 and b2 and b3:
             runs += 1
             return runs, [True, True, True], new_outs
-        elif b1 and b2:
+        if b1 and b2:
+            # Runner on 2B forced to 3B, runner on 1B forced to 2B
+            return runs, [True, True, True], new_outs
+        if b1:
+            # Runner on 1B forced to 2B
             return runs, [True, True, b3], new_outs
-        elif b1:
-            return runs, [True, True, b3], new_outs
-        else:
-            return runs, [True, b2, b3], new_outs
+        return runs, [True, b2, b3], new_outs
 
-    elif outcome == "K":
+    if outcome == "K":
         new_outs += 1
         return 0, bases[:], new_outs
 
-    else:  # OUT (groundout / flyout)
-        new_outs += 1
-        if new_outs < 3:
-            # Runner on 3rd tags up on flyout / scores on groundout
-            if b3:
-                if np.random.random() < rng["groundout_runner_3b_scores_prob"]:
-                    runs += 1
-                    return runs, [b1, b2, False], new_outs
-        return 0, bases[:], new_outs
+    # OUT — groundout/flyout
+    new_outs += 1
+    if new_outs < 3 and b3 and rng.random() < pr["groundout_runner_3b_scores_prob"]:
+        runs += 1
+        return runs, [b1, b2, False], new_outs
+    return 0, bases[:], new_outs
 
 
 def build_bullpen_profile(bullpen_stats: dict) -> dict:
-    """Convert team bullpen ERA/FIP into a pitcher profile for simulation.
-
-    woba_allowed is derived from this team's own FIP — no league avg substitution.
-    Pitch mix is a reasonable bullpen aggregate (heavy fastball/slider usage);
-    since woba_allowed is uniform across types, the mix only weights the batter's
-    pitch-type splits and does not introduce league avg into the denominator.
-    """
+    """Convert team bullpen ERA/FIP into a pitcher profile for simulation."""
     era = bullpen_stats.get("era", 4.50)
     fip = bullpen_stats.get("fip", 4.20)
     woba_allowed = max(0.180, min(0.420, FIP_WOBA_INTERCEPT + fip * FIP_WOBA_SLOPE))
