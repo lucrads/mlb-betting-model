@@ -2,6 +2,7 @@
 
 import statsapi
 import logging
+from datetime import date as _date, timedelta
 from functools import lru_cache
 
 logger = logging.getLogger(__name__)
@@ -107,6 +108,35 @@ def _lineup_from_boxscore(game_id: int) -> tuple[list[dict], list[dict]]:
     except Exception as exc:
         logger.debug("Could not fetch boxscore for game %s: %s", game_id, exc)
         return [], []
+
+
+def get_projected_lineup(team_id: int, before_date_str: str) -> list[dict]:
+    """
+    Return the most recent starting lineup for team_id by scanning back
+    through completed games before before_date_str (up to 7 days).
+    Returns an empty list if nothing is found.
+    """
+    d = _date.fromisoformat(before_date_str) - timedelta(days=1)
+    for _ in range(7):
+        try:
+            schedule = statsapi.schedule(sportId=1, date=d.isoformat(), team=team_id)
+        except Exception:
+            d -= timedelta(days=1)
+            continue
+        for g in schedule:
+            if g.get("game_type") != "R":
+                continue
+            if g.get("status") not in {"Final", "Game Over"}:
+                continue
+            game_id = g["game_id"]
+            home_lineup, away_lineup = _lineup_from_boxscore(game_id)
+            lineup = home_lineup if g["home_id"] == team_id else away_lineup
+            if lineup:
+                logger.debug("Projected lineup for team %s from %s game %s",
+                             team_id, d.isoformat(), game_id)
+                return lineup
+        d -= timedelta(days=1)
+    return []
 
 
 def _parse_side_lineup(side: dict) -> list[dict]:

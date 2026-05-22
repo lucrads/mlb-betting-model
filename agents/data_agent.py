@@ -22,7 +22,7 @@ import argparse
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from data.fetcher import get_games_for_date
+from data.fetcher import get_games_for_date, get_projected_lineup
 from data.player_stats import get_batter_profile, get_pitcher_profile, get_bullpen_profile
 from data.odds import fetch_odds, resolve_game_odds
 from data.weather import get_wind_context
@@ -108,9 +108,24 @@ def run(date: str, odds_key: str | None = None) -> dict:
         home_bullpen_profile = build_bullpen_profile(home_bp_stats)
         away_bullpen_profile = build_bullpen_profile(away_bp_stats)
 
-        # Lineups
-        home_lineup = game["home_lineup"] or _default_lineup(game["home_team"])
-        away_lineup = game["away_lineup"] or _default_lineup(game["away_team"])
+        # Lineups — use official if posted, otherwise project from most recent game
+        home_lineup = game["home_lineup"]
+        if not home_lineup:
+            home_lineup = get_projected_lineup(game["home_team_id"], date)
+            if home_lineup:
+                logger.info("    %s: using projected lineup (%d players)", game["home_team"], len(home_lineup))
+            else:
+                home_lineup = _default_lineup(game["home_team"])
+                logger.info("    %s: no projected lineup found — using default", game["home_team"])
+
+        away_lineup = game["away_lineup"]
+        if not away_lineup:
+            away_lineup = get_projected_lineup(game["away_team_id"], date)
+            if away_lineup:
+                logger.info("    %s: using projected lineup (%d players)", game["away_team"], len(away_lineup))
+            else:
+                away_lineup = _default_lineup(game["away_team"])
+                logger.info("    %s: no projected lineup found — using default", game["away_team"])
         home_lineup_profiles = [get_batter_profile(b["name"], b.get("id")) for b in home_lineup]
         away_lineup_profiles = [get_batter_profile(b["name"], b.get("id")) for b in away_lineup]
 
