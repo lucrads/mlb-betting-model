@@ -151,7 +151,7 @@ def main():
 
     # 2. Fetch sportsbook odds
     logger.info("Fetching sportsbook odds...")
-    odds_data = fetch_odds(odds_api_key)
+    odds_data = fetch_odds(api_key=odds_api_key, date_str=args.date)
 
     # 3. Load player stats and simulate each game
     game_results = []
